@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms";
-import { C } from "@/lib/tokens";
+import { BORDER_HAIRLINE, C, SHADOW_CARD } from "@/lib/tokens";
 import { useStore } from "./store";
 
 export default function Toast() {
@@ -15,21 +15,35 @@ export default function Toast() {
         left: "50%",
         transform: "translateX(-50%)",
         zIndex: 300,
-        background: C.text,
-        color: "#fff",
-        padding: "12px 18px",
-        borderRadius: 12,
-        fontSize: 14,
+        background: "#FFFFFF",
+        color: C.text,
+        padding: "9px 14px 9px 12px",
+        borderRadius: 999,
+        border: BORDER_HAIRLINE,
+        fontSize: 13,
         fontWeight: 500,
-        boxShadow: "0 16px 40px rgba(0,0,0,0.25)",
-        display: "flex",
+        letterSpacing: -0.1,
+        boxShadow: SHADOW_CARD,
+        display: "inline-flex",
         alignItems: "center",
-        gap: 10,
+        gap: 8,
         animation: "slideIn 220ms ease both",
       }}
     >
-      <span style={{ color: C.green }}>{Icon.check(16)}</span>
-      {toast}
+      <span
+        style={{
+          color: C.green,
+          display: "grid",
+          placeItems: "center",
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          border: `1px solid ${C.greenBorder}`,
+        }}
+      >
+        {Icon.check(11)}
+      </span>
+      <span>{toast}</span>
     </div>
   );
 }

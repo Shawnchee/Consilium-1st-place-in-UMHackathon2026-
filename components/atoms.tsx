@@ -5,8 +5,20 @@ import {
   ReactNode,
   useState,
 } from "react";
-import { C, SHADOW_CARD, SHADOW_CARD_H, SHADOW_CTA, SHADOW_CTA_H, Tone } from "@/lib/tokens";
+import {
+  BORDER_HAIRLINE,
+  C,
+  FONT_SERIF,
+  RADIUS,
+  SHADOW_CARD,
+  SHADOW_CARD_H,
+  Tone,
+} from "@/lib/tokens";
 
+/* ------------------------------------------------------------------
+   Pill — rounded-full, hairline border in tone color at low opacity,
+   tone-colored text, white background. Not a wash.
+   ------------------------------------------------------------------ */
 export function Pill({
   children,
   tone = "neutral",
@@ -16,11 +28,11 @@ export function Pill({
   tone?: Tone;
   style?: CSSProperties;
 }) {
-  const tones: Record<Tone, { bg: string; bd: string; fg: string }> = {
-    green: { bg: C.greenLight, bd: C.greenBorder, fg: C.greenDark },
-    amber: { bg: C.amberLight, bd: C.amberBorder, fg: C.amber },
-    red: { bg: C.redLight, bd: C.redBorder, fg: C.red },
-    neutral: { bg: "#F3F2EF", bd: C.border, fg: C.ink },
+  const tones: Record<Tone, { fg: string; bd: string }> = {
+    green: { fg: C.greenDark, bd: "rgba(5,150,105,0.28)" },
+    amber: { fg: C.amber, bd: "rgba(217,119,6,0.28)" },
+    red: { fg: C.red, bd: "rgba(220,38,38,0.28)" },
+    neutral: { fg: C.ink, bd: C.border },
   };
   const t = tones[tone];
   return (
@@ -29,14 +41,15 @@ export function Pill({
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "4px 10px",
+        padding: "3px 10px",
         borderRadius: 999,
-        background: t.bg,
+        background: "#FFFFFF",
         border: `1px solid ${t.bd}`,
         color: t.fg,
         fontSize: 12,
         fontWeight: 600,
         letterSpacing: 0.1,
+        lineHeight: 1.6,
         ...style,
       }}
     >
@@ -45,9 +58,12 @@ export function Pill({
   );
 }
 
+/* ------------------------------------------------------------------
+   Dot — solid tone color, 6px default. Pulse option retained.
+   ------------------------------------------------------------------ */
 export function Dot({
   color = C.red,
-  size = 8,
+  size = 6,
   pulsing = false,
   style,
 }: {
@@ -63,6 +79,7 @@ export function Dot({
         display: "inline-block",
         width: size,
         height: size,
+        flexShrink: 0,
         ...style,
       }}
     >
@@ -90,6 +107,10 @@ export function Dot({
   );
 }
 
+/* ------------------------------------------------------------------
+   Card — RADIUS.lg (12px), hairline border, flat hairline shadow.
+   No inner gradients.
+   ------------------------------------------------------------------ */
 export function Card({
   children,
   style,
@@ -112,8 +133,10 @@ export function Card({
       onMouseLeave={() => setHover(false)}
       style={{
         background: C.card,
-        border: `1px solid ${active ? C.brandBorder : C.border}`,
-        borderRadius: 14,
+        border: active
+          ? `1px solid ${C.text}`
+          : BORDER_HAIRLINE,
+        borderRadius: RADIUS.lg,
         boxShadow: lift ? SHADOW_CARD_H : SHADOW_CARD,
         transform: lift ? "translateY(-1px)" : "translateY(0)",
         transition:
@@ -127,6 +150,15 @@ export function Card({
   );
 }
 
+/* ------------------------------------------------------------------
+   Button — flat, 8px radius base, hairline border default.
+   primary  = solid #0F172A (C.text) with white text
+   ghost    = transparent, hairline border on hover
+   soft     = secondary — white + hairline
+   dark     = alias for primary (kept for API compat)
+   danger   = solid red (for rare destructive actions only)
+   Optional: serif={true} uses FONT_SERIF.
+   ------------------------------------------------------------------ */
 type ButtonVariant = "primary" | "ghost" | "soft" | "dark" | "danger";
 
 export function Button({
@@ -138,6 +170,8 @@ export function Button({
   icon,
   iconRight,
   type = "button",
+  serif = false,
+  disabled = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -147,56 +181,62 @@ export function Button({
   icon?: ReactNode;
   iconRight?: ReactNode;
   type?: "button" | "submit" | "reset";
+  serif?: boolean;
+  disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const [press, setPress] = useState(false);
+
   const sizes = {
-    sm: { padding: "8px 14px", fontSize: 13, borderRadius: 8 },
-    md: { padding: "11px 18px", fontSize: 14, borderRadius: 10 },
-    lg: { padding: "14px 24px", fontSize: 15, borderRadius: 12 },
+    sm: { padding: "7px 13px", fontSize: 13, borderRadius: RADIUS.md },
+    md: { padding: "10px 16px", fontSize: 14, borderRadius: RADIUS.md },
+    lg: { padding: "13px 22px", fontSize: 15, borderRadius: RADIUS.md },
   } as const;
   const base = sizes[size];
+
   const variants: Record<ButtonVariant, CSSProperties> = {
     primary: {
-      background: C.brand,
-      color: "#fff",
-      border: "none",
-      boxShadow: hover ? SHADOW_CTA_H : SHADOW_CTA,
-      filter: press ? "brightness(.88)" : hover ? "brightness(1.03)" : "none",
+      background: C.text, // #0F172A
+      color: "#FFFFFF",
+      border: "1px solid transparent",
+      boxShadow: "none",
+      filter: press ? "brightness(.90)" : hover ? "brightness(1.08)" : "none",
     },
     ghost: {
       background: "transparent",
       color: C.text,
-      border: `1px solid ${C.border}`,
+      border: `1px solid ${hover ? C.border : "transparent"}`,
       boxShadow: "none",
-      filter: press ? "brightness(.95)" : "none",
+      filter: press ? "brightness(.96)" : "none",
     },
     soft: {
-      background: "#F3F2EF",
+      background: "#FFFFFF",
       color: C.text,
-      border: `1px solid ${C.border}`,
+      border: BORDER_HAIRLINE,
       boxShadow: "none",
-      filter: press ? "brightness(.95)" : hover ? "brightness(.98)" : "none",
+      filter: hover ? "brightness(.98)" : "none",
     },
     dark: {
       background: C.text,
-      color: "#fff",
-      border: "none",
-      boxShadow: "0 6px 18px rgba(0,0,0,.18)",
-      filter: press ? "brightness(.88)" : hover ? "brightness(1.1)" : "none",
+      color: "#FFFFFF",
+      border: "1px solid transparent",
+      boxShadow: "none",
+      filter: press ? "brightness(.90)" : hover ? "brightness(1.08)" : "none",
     },
     danger: {
       background: C.red,
-      color: "#fff",
-      border: "none",
-      boxShadow: "0 6px 18px rgba(220,38,38,.25)",
-      filter: press ? "brightness(.88)" : "none",
+      color: "#FFFFFF",
+      border: "1px solid transparent",
+      boxShadow: "none",
+      filter: press ? "brightness(.90)" : hover ? "brightness(1.06)" : "none",
     },
   };
+
   return (
     <button
       type={type}
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => {
         setHover(false);
@@ -208,16 +248,15 @@ export function Button({
         ...base,
         ...variants[variant],
         fontWeight: 600,
-        letterSpacing: 0.1,
-        fontFamily: "inherit",
-        cursor: "pointer",
+        letterSpacing: 0.05,
+        fontFamily: serif ? FONT_SERIF : "inherit",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
         gap: 8,
-        transform: hover ? "translateY(-1px)" : "translateY(0)",
-        transition:
-          "transform 120ms ease, filter 120ms ease, box-shadow 180ms ease",
+        transition: "filter 120ms ease, border-color 120ms ease",
         ...style,
       }}
     >
@@ -228,6 +267,9 @@ export function Button({
   );
 }
 
+/* ------------------------------------------------------------------
+   Icon set — unchanged SVG pass-through.
+   ------------------------------------------------------------------ */
 type IconFn = (s?: number) => ReactNode;
 type ChevronFn = (s?: number, dir?: "up" | "down") => ReactNode;
 

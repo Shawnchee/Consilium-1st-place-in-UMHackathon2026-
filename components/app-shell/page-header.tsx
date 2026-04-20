@@ -1,8 +1,12 @@
 "use client";
 
 import { ReactNode } from "react";
-import { C } from "@/lib/tokens";
+import { BORDER_HAIRLINE, C, FONT_SERIF, RADIUS } from "@/lib/tokens";
 
+/* ------------------------------------------------------------------
+   PageHeader — title in serif (editorial), muted subtitle in sans,
+   thin hairline divider below. No gradient.
+   ------------------------------------------------------------------ */
 export function PageHeader({
   eyebrow,
   title,
@@ -17,7 +21,9 @@ export function PageHeader({
   return (
     <div
       style={{
-        padding: "40px 0 28px",
+        padding: "36px 0 20px",
+        marginBottom: 24,
+        borderBottom: BORDER_HAIRLINE,
         display: "flex",
         alignItems: "flex-end",
         gap: 20,
@@ -28,12 +34,12 @@ export function PageHeader({
         {eyebrow && (
           <div
             style={{
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 700,
               letterSpacing: 1.6,
               textTransform: "uppercase",
-              color: C.brand,
-              marginBottom: 8,
+              color: C.muted,
+              marginBottom: 10,
             }}
           >
             {eyebrow}
@@ -41,16 +47,29 @@ export function PageHeader({
         )}
         <h2
           style={{
-            fontSize: 34,
-            fontWeight: 700,
-            letterSpacing: -0.8,
+            fontFamily: FONT_SERIF,
+            fontSize: "clamp(28px, 3.2vw, 36px)",
+            fontWeight: 600,
+            letterSpacing: -0.6,
             margin: "0 0 8px",
             lineHeight: 1.1,
+            color: C.text,
           }}
         >
           {title}
         </h2>
-        {sub && <div style={{ fontSize: 15, color: C.muted, maxWidth: 680 }}>{sub}</div>}
+        {sub && (
+          <div
+            style={{
+              fontSize: 14.5,
+              color: C.muted,
+              maxWidth: 680,
+              lineHeight: 1.5,
+            }}
+          >
+            {sub}
+          </div>
+        )}
       </div>
       {right && <div>{right}</div>}
     </div>
@@ -70,7 +89,7 @@ export function SectionTitle({
     <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
       <h3
         style={{
-          fontSize: 13,
+          fontSize: 11.5,
           fontWeight: 700,
           textTransform: "uppercase",
           letterSpacing: 1.4,
@@ -80,7 +99,17 @@ export function SectionTitle({
       >
         {title}
       </h3>
-      {count != null && <span style={{ fontSize: 12, color: C.hint }}>{count}</span>}
+      {count != null && (
+        <span
+          style={{
+            fontFamily: "'JetBrains Mono', 'SF Mono', ui-monospace, monospace",
+            fontSize: 11,
+            color: C.hint,
+          }}
+        >
+          {count}
+        </span>
+      )}
       <div style={{ flex: 1 }} />
       {action}
     </div>
@@ -91,18 +120,19 @@ export function PetAvatar({ name }: { name: string; species?: "Dog" | "Cat" }) {
   return (
     <div
       style={{
-        width: 46,
-        height: 46,
-        borderRadius: 12,
-        background: C.brandLight,
-        color: C.brandDark,
+        width: 44,
+        height: 44,
+        borderRadius: RADIUS.md,
+        background: "#FFFFFF",
+        color: C.text,
         display: "grid",
         placeItems: "center",
-        fontSize: 16,
-        fontWeight: 700,
+        fontSize: 17,
+        fontWeight: 600,
         letterSpacing: -0.3,
         flexShrink: 0,
-        border: `1px solid ${C.brandBorder}`,
+        border: BORDER_HAIRLINE,
+        fontFamily: FONT_SERIF,
       }}
     >
       {name[0]?.toUpperCase() ?? "·"}

@@ -1,9 +1,9 @@
 export const C = {
-  bg: "#F5F3EE",
+  bg: "#F4F2ED",
   bgAlt: "#FBFAF6",
   card: "#FFFFFF",
-  border: "#E8E6E0",
-  borderSoft: "#EFEDE8",
+  border: "#D9D6CF",
+  borderSoft: "#E8E6E0",
 
   brand: "#4F46E5",
   brandDark: "#3730A3",
@@ -28,10 +28,21 @@ export const C = {
   ink: "#1E293B",
 } as const;
 
-export const SHADOW_CARD = "0 1px 3px rgba(15,23,42,0.04)";
-export const SHADOW_CARD_H =
-  "0 6px 20px rgba(15,23,42,0.07), 0 1px 3px rgba(15,23,42,0.04)";
-export const SHADOW_CTA = "0 8px 24px rgba(79,70,229,0.28)";
-export const SHADOW_CTA_H = "0 10px 30px rgba(79,70,229,0.38)";
+export const SHADOW_CARD = "0 1px 0 rgba(15,23,42,0.03)";
+export const SHADOW_CARD_H = "0 2px 0 rgba(15,23,42,0.04)";
+export const SHADOW_CTA = "0 1px 0 rgba(15,23,42,0.08)";
+export const SHADOW_CTA_H = "0 1px 0 rgba(15,23,42,0.12)";
+
+export const FONT_SERIF =
+  "'Iowan Old Style', 'Palatino Linotype', Georgia, 'Times New Roman', serif";
+export const FONT_SANS =
+  "system-ui, -apple-system, 'Segoe UI', sans-serif";
+export const FONT_MONO =
+  "'JetBrains Mono', 'SF Mono', ui-monospace, monospace";
+
+export const RADIUS = { sm: 6, md: 8, lg: 12, xl: 16 } as const;
+
+export const BORDER_HAIRLINE = "1px solid #E8E6E0";
+export const BORDER_STRONG = "1px solid #D9D6CF";
 
 export type Tone = "green" | "amber" | "red" | "neutral";

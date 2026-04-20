@@ -1,307 +1,779 @@
 "use client";
 
 import Link from "next/link";
-import { Button, Card, Dot, Icon, Pill } from "@/components/atoms";
-import {
-  BriefRow,
-  PageHeader,
-  PetAvatar,
-  SectionTitle,
-} from "@/components/app-shell/page-header";
+import { useEffect, useState } from "react";
+import { Dot, Pill } from "@/components/atoms";
 import { useStore } from "@/components/app-shell/store";
 import { MONTH_METRICS, PATIENTS } from "@/lib/data";
-import { C } from "@/lib/tokens";
-import type { FollowUp, MetricCardData, Patient } from "@/lib/types";
+import { C, FONT_SERIF, FONT_MONO } from "@/lib/tokens";
+import type { MetricCardData, Patient } from "@/lib/types";
 
-function MetricCard({ m }: { m: MetricCardData }) {
-  const toneMap: Record<string, string> = {
-    green: C.green,
-    amber: C.amber,
-    red: C.red,
-  };
-  const tone = toneMap[m.tone] || C.text;
+/* ------------------------------------------------------------------ */
+/*  Hero — greeting + priority banner                                  */
+/* ------------------------------------------------------------------ */
+
+function HeroRow({ escalationCount }: { escalationCount: number }) {
   return (
-    <Card style={{ padding: 18 }}>
+    <div
+      style={{
+        padding: "36px 0 28px",
+        marginBottom: 32,
+        borderBottom: `1px solid ${C.borderSoft}`,
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 380px)",
+        gap: 32,
+        alignItems: "end",
+        animation: "fadeUp 420ms ease both",
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 1.8,
+            textTransform: "uppercase",
+            color: C.muted,
+            marginBottom: 10,
+          }}
+        >
+          Dashboard
+        </div>
+        <h1
+          style={{
+            margin: 0,
+            fontFamily: FONT_SERIF,
+            fontSize: 34,
+            fontWeight: 500,
+            letterSpacing: -0.8,
+            color: C.text,
+            lineHeight: 1.08,
+          }}
+        >
+          Good morning, Dr. Amirah.
+        </h1>
+        <div
+          style={{
+            marginTop: 10,
+            fontSize: 14,
+            color: C.muted,
+            letterSpacing: 0.1,
+          }}
+        >
+          PawsClinic KL
+          <span style={{ margin: "0 10px", color: C.hint }}>·</span>
+          Tue 21 Apr 2026
+        </div>
+      </div>
+
+      <PriorityBanner escalationCount={escalationCount} />
+    </div>
+  );
+}
+
+function PriorityBanner({ escalationCount }: { escalationCount: number }) {
+  const urgent = escalationCount > 0;
+  const accent = urgent ? C.red : C.green;
+
+  return (
+    <Link
+      href="/follow-ups"
+      style={{ textDecoration: "none", display: "block" }}
+    >
       <div
         style={{
-          fontSize: 11,
+          background: C.card,
+          borderTop: `1px solid ${C.borderSoft}`,
+          borderRight: `1px solid ${C.borderSoft}`,
+          borderBottom: `1px solid ${C.borderSoft}`,
+          borderLeft: `2px solid ${accent}`,
+          borderRadius: 12,
+          padding: "16px 18px",
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          transition: "transform 140ms ease",
+        }}
+      >
+        <Dot color={accent} size={8} pulsing={urgent} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontFamily: FONT_SERIF,
+              fontSize: 17,
+              fontWeight: 500,
+              color: C.text,
+              letterSpacing: -0.2,
+            }}
+          >
+            {urgent
+              ? `${escalationCount} case${escalationCount === 1 ? "" : "s"} need you`
+              : "All follow-ups clear"}
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
+            {urgent
+              ? "Escalations waiting in the follow-up queue"
+              : "No escalations · nothing waiting"}
+          </div>
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: C.text,
+            borderBottom: `1px solid ${C.text}`,
+            paddingBottom: 1,
+            letterSpacing: 0.1,
+          }}
+        >
+          Review →
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  KPI Row — 4 cards full-width                                       */
+/* ------------------------------------------------------------------ */
+
+const METRIC_DELTAS: Record<string, string> = {
+  "Time saved": "+18% vs Mar",
+  "Billing recovered": "+12% vs Mar",
+  "Complications caught": "+1 vs Mar",
+  "Follow-up response": "+4pts vs Mar",
+};
+
+const METRIC_TARGETS: Record<string, string> = {
+  "Time saved": "Target 3h/doctor/day",
+  "Billing recovered": "Target RM 8–12k",
+  "Complications caught": "Target 2–4",
+  "Follow-up response": "Target >70%",
+};
+
+function KpiCard({ m, index }: { m: MetricCardData; index: number }) {
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.borderSoft}`,
+        borderRadius: 12,
+        padding: "22px 22px 20px",
+        minHeight: 150,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        animation: "fadeUp 480ms ease both",
+        animationDelay: `${120 + index * 70}ms`,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10.5,
           textTransform: "uppercase",
-          letterSpacing: 1.4,
+          letterSpacing: 1.6,
           color: C.muted,
-          fontWeight: 600,
+          fontWeight: 700,
         }}
       >
         {m.label}
       </div>
       <div
         style={{
-          fontSize: 30,
-          fontWeight: 700,
-          color: tone,
-          marginTop: 8,
-          letterSpacing: -0.7,
+          fontFamily: FONT_SERIF,
+          fontSize: 38,
+          fontWeight: 500,
+          color: C.text,
+          marginTop: 14,
+          letterSpacing: -1.2,
+          lineHeight: 1,
         }}
       >
         {m.value}
       </div>
-      <div style={{ fontSize: 12, color: C.hint, marginTop: 2 }}>{m.sub}</div>
-    </Card>
+      <div
+        style={{
+          marginTop: 14,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 11.5,
+          color: C.hint,
+          flexWrap: "wrap",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: FONT_MONO,
+            color: C.muted,
+            fontSize: 11.5,
+          }}
+        >
+          {METRIC_DELTAS[m.label] ?? ""}
+        </span>
+        <span style={{ color: C.hint }}>·</span>
+        <span>{METRIC_TARGETS[m.label] ?? m.sub}</span>
+      </div>
+    </div>
   );
 }
 
-function PatientCard({
+function KpiRow() {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+        gap: 16,
+        marginBottom: 32,
+      }}
+    >
+      {MONTH_METRICS.map((m, i) => (
+        <KpiCard key={m.label} m={m} index={i} />
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Patient schedule (left column)                                     */
+/* ------------------------------------------------------------------ */
+
+function BriefLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "140px 1fr",
+        gap: 16,
+        padding: "8px 0",
+        fontSize: 14,
+        lineHeight: 1.55,
+      }}
+    >
+      <div
+        style={{
+          color: C.muted,
+          fontSize: 11,
+          textTransform: "uppercase",
+          letterSpacing: 1.3,
+          fontWeight: 600,
+          paddingTop: 3,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ color: C.text }}>{value}</div>
+    </div>
+  );
+}
+
+function PatientRow({
   p,
   expanded,
   onToggle,
+  index,
 }: {
   p: Patient;
   expanded: boolean;
   onToggle: () => void;
+  index: number;
 }) {
+  const [hover, setHover] = useState(false);
   return (
-    <Card hoverable active={expanded} style={{ padding: 0, overflow: "hidden" }}>
+    <div
+      style={{
+        animation: "fadeUp 480ms ease both",
+        animationDelay: `${120 + index * 55}ms`,
+      }}
+    >
       <div
         onClick={onToggle}
-        style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: 18, cursor: "pointer" }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          background: C.card,
+          border: `1px solid ${hover || expanded ? C.border : C.borderSoft}`,
+          borderRadius: 12,
+          padding: "20px 22px",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+          minHeight: 80,
+          transform: hover && !expanded ? "translateY(-1px)" : "translateY(0)",
+          transition: "transform 140ms ease, border-color 160ms ease",
+        }}
       >
+        {/* Time */}
         <div
           style={{
-            minWidth: 56,
-            fontSize: 15,
-            fontWeight: 700,
-            color: C.text,
-            letterSpacing: -0.2,
+            minWidth: 58,
+            fontFamily: FONT_MONO,
+            fontSize: 14,
+            color: C.muted,
+            letterSpacing: 0.2,
           }}
         >
           {p.time}
         </div>
-        <PetAvatar name={p.name} />
+
+        {/* Avatar */}
+        <div
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: C.bgAlt,
+            border: `1px solid ${C.borderSoft}`,
+            display: "grid",
+            placeItems: "center",
+            fontFamily: FONT_SERIF,
+            fontSize: 17,
+            fontWeight: 500,
+            color: C.ink,
+            flexShrink: 0,
+          }}
+        >
+          {p.name[0]}
+        </div>
+
+        {/* Name + meta */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{p.name}</div>
-            <div style={{ fontSize: 13, color: C.muted }}>
-              · {p.breed} · {p.age}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                fontFamily: FONT_SERIF,
+                fontSize: 18,
+                fontWeight: 500,
+                color: C.text,
+                letterSpacing: -0.2,
+              }}
+            >
+              {p.name}
             </div>
-            <Pill tone={p.tagColor}>{p.tag}</Pill>
+            <Pill tone={p.tagColor} style={{ fontSize: 10.5, padding: "2px 9px" }}>
+              {p.tag}
+            </Pill>
           </div>
-          <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-            {p.reason} · Owner: {p.owner}
+          <div style={{ fontSize: 13, color: C.muted, marginTop: 5 }}>
+            {p.species} · {p.age} · Owner {p.owner}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.muted }}>
-          <span style={{ fontSize: 12 }}>{expanded ? "Hide brief" : "Brief"}</span>
-          {Icon.chevron(16, expanded ? "up" : "down")}
+
+        {/* Brief affordance */}
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: expanded ? C.text : C.muted,
+            letterSpacing: 0.1,
+            borderBottom: `1px solid ${expanded ? C.text : "transparent"}`,
+            paddingBottom: 1,
+          }}
+        >
+          {expanded ? "Hide brief" : "Brief →"}
         </div>
       </div>
+
       {expanded && (
         <div
           style={{
-            borderTop: `1px solid ${C.border}`,
-            padding: "20px 22px 22px",
-            background: "#FCFBF9",
-            animation: "slideIn 260ms ease both",
+            marginTop: 8,
+            background: C.card,
+            border: `1px solid ${C.borderSoft}`,
+            borderRadius: 12,
+            animation: "fadeUp 260ms ease both",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <span style={{ color: C.green, display: "inline-flex" }}>{Icon.spark(14)}</span>
+          <div
+            style={{
+              padding: "16px 24px",
+              borderBottom: `1px solid ${C.borderSoft}`,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
             <div
               style={{
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: 700,
-                letterSpacing: 1.4,
+                letterSpacing: 1.6,
                 textTransform: "uppercase",
-                color: C.green,
+                color: C.muted,
               }}
             >
-              Pre-consult brief · generated from 10 past visits
+              Pre-consult brief
+            </div>
+            <div style={{ fontSize: 11.5, color: C.hint }}>
+              · generated from historical visits
             </div>
           </div>
-          <div style={{ fontSize: 14, color: C.text, lineHeight: 1.55 }}>
-            <BriefRow k="Last visit" v={p.brief.lastVisit} />
-            <BriefRow k="Chronic flags" v={p.brief.chronic} />
-            <BriefRow k="Compliance" v={p.brief.compliance} />
-            <BriefRow k="Pending" v={p.brief.pending} />
-            <div
-              style={{
-                marginTop: 12,
-                padding: "12px 14px",
-                background: C.greenLight,
-                border: `1px solid ${C.greenBorder}`,
-                borderRadius: 10,
-              }}
-            >
-              <div
+
+          <div style={{ padding: "16px 24px 8px" }}>
+            <BriefLine label="Last visit" value={p.brief.lastVisit} />
+            <BriefLine label="Chronic" value={p.brief.chronic} />
+            <BriefLine label="Compliance" value={p.brief.compliance} />
+            <BriefLine label="Probe today" value={p.brief.probe} />
+            <BriefLine label="Pending" value={p.brief.pending} />
+          </div>
+
+          <div
+            style={{
+              padding: "16px 24px",
+              borderTop: `1px solid ${C.borderSoft}`,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <Link href="/consult" style={{ display: "inline-flex" }}>
+              <span
                 style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  letterSpacing: 1.5,
-                  color: C.green,
-                  textTransform: "uppercase",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: C.text,
+                  borderBottom: `1px solid ${C.text}`,
+                  paddingBottom: 1,
+                  letterSpacing: 0.1,
                 }}
               >
-                Probe today
-              </div>
-              <div style={{ fontSize: 14, color: C.greenDark, marginTop: 3, fontWeight: 500 }}>
-                {p.brief.probe}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-            <Link href={`/consult?pid=${p.id}`}>
-              <Button size="md">Start Consult</Button>
+                Start consult →
+              </span>
             </Link>
-            <Link href={`/passport?pid=${p.id}`}>
-              <Button size="md" variant="soft" icon={Icon.paw(14)}>
-                View Passport
-              </Button>
-            </Link>
-            <Button size="md" variant="ghost">
-              Add note
-            </Button>
             <div style={{ flex: 1 }} />
-            <div style={{ alignSelf: "center", fontSize: 12, color: C.hint }}>{p.ownerPhone}</div>
+            <div style={{ fontSize: 11.5, color: C.hint, fontFamily: FONT_MONO }}>
+              {p.ownerPhone}
+            </div>
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
-function FollowUpItem({
-  f,
-  onClick,
+/* ------------------------------------------------------------------ */
+/*  Right agenda column widgets                                        */
+/* ------------------------------------------------------------------ */
+
+function AgendaCard({
+  title,
+  children,
+  delay,
 }: {
-  f: FollowUp;
-  onClick?: () => void;
+  title: string;
+  children: React.ReactNode;
+  delay: number;
 }) {
-  const tones = {
-    escalate: { dot: C.red, pill: "red" as const, label: "ESCALATE", pulse: true },
-    monitor: { dot: C.amber, pill: "amber" as const, label: "MONITOR", pulse: false },
-    clear: { dot: C.green, pill: "green" as const, label: "ALL CLEAR", pulse: false },
-  };
-  const t = tones[f.level];
   return (
-    <Card
-      hoverable={f.level === "escalate"}
-      onClick={onClick}
+    <div
       style={{
-        padding: 14,
-        borderColor: f.level === "escalate" ? C.redBorder : C.border,
+        background: C.card,
+        border: `1px solid ${C.borderSoft}`,
+        borderRadius: 12,
+        animation: "fadeUp 480ms ease both",
+        animationDelay: `${delay}ms`,
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <div style={{ marginTop: 5 }}>
-          <Dot color={t.dot} size={9} pulsing={t.pulse} />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{f.patient}</div>
-            <div style={{ fontSize: 12, color: C.muted }}>· {f.procedure}</div>
-            <div style={{ flex: 1 }} />
-            {f.tsLabel && <div style={{ fontSize: 11, color: C.hint }}>{f.tsLabel}</div>}
-          </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: C.ink,
-              marginTop: 6,
-              fontStyle: "italic",
-              lineHeight: 1.4,
-              display: "-webkit-box",
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: "vertical",
-              overflow: "hidden",
-            }}
-          >
-            &ldquo;{f.ownerMessage}&rdquo;
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-            <Pill tone={t.pill} style={{ fontSize: 10 }}>
-              {t.label}
-            </Pill>
-            <div style={{ fontSize: 11, color: C.muted }}>Owner: {f.owner}</div>
-            {f.level === "escalate" && (
-              <>
-                <div style={{ flex: 1 }} />
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: C.red,
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  Open {Icon.arrow(12)}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      <div
+        style={{
+          padding: "16px 20px",
+          borderBottom: `1px solid ${C.borderSoft}`,
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: 1.5,
+          textTransform: "uppercase",
+          color: C.muted,
+        }}
+      >
+        {title}
       </div>
-    </Card>
+      <div style={{ padding: "16px 20px" }}>{children}</div>
+    </div>
   );
 }
 
-export default function DashboardPage() {
-  const { followups, resolvedCount, openEscalation, expandedPatient, setExpandedPatient } =
-    useStore();
-  const urgent = followups.filter((f) => f.level === "escalate").length;
-  const monitorN = followups.filter((f) => f.level === "monitor").length;
-
+function QuickActions() {
+  const actions = [
+    { label: "Open consult", href: "/consult" },
+    { label: "Review follow-ups", href: "/follow-ups" },
+    { label: "Pet passports", href: "/passport" },
+  ];
   return (
-    <div style={{ padding: "0 32px 100px", maxWidth: 1480, margin: "0 auto" }}>
-      <PageHeader
-        eyebrow="Monday morning · 20 April"
-        title="Good morning, Dr. Amirah."
-        sub={`${PATIENTS.length} patients today · ${urgent} escalations waiting · ${monitorN} in monitoring · 78% follow-up response this month.`}
-        right={
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button variant="ghost" size="sm">
-              + Add walk-in
-            </Button>
-            <Button variant="soft" size="sm">
-              Export day
-            </Button>
-          </div>
-        }
-      />
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 14,
-          marginBottom: 36,
-        }}
-      >
-        {MONTH_METRICS.map((m, i) => (
-          <MetricCard key={i} m={m} />
+    <AgendaCard title="Quick actions" delay={220}>
+      <div style={{ display: "grid", gap: 8 }}>
+        {actions.map((a) => (
+          <Link
+            key={a.label}
+            href={a.href}
+            style={{ textDecoration: "none" }}
+          >
+            <QuickActionRow label={a.label} />
+          </Link>
         ))}
       </div>
+    </AgendaCard>
+  );
+}
+
+function QuickActionRow({ label }: { label: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: "12px 14px",
+        border: `1px solid ${hover ? C.border : C.borderSoft}`,
+        borderRadius: 8,
+        fontSize: 13.5,
+        fontWeight: 500,
+        color: C.text,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        background: C.card,
+        transition: "border-color 160ms ease, transform 140ms ease",
+        transform: hover ? "translateY(-1px)" : "translateY(0)",
+        cursor: "pointer",
+      }}
+    >
+      <span>{label}</span>
+      <span style={{ color: C.muted, fontSize: 13 }}>→</span>
+    </div>
+  );
+}
+
+const RECENT_ACTIVITY = [
+  { time: "10:12", text: "Rex — SOAP approved" },
+  { time: "09:48", text: "Milo — escalation opened" },
+  { time: "09:21", text: "Tofu — follow-up auto-resolved" },
+  { time: "08:57", text: "Luna — intake consult started" },
+  { time: "08:30", text: "Clinic day opened" },
+];
+
+function RecentActivity() {
+  return (
+    <AgendaCard title="Recent activity" delay={300}>
+      <div style={{ display: "grid", gap: 10 }}>
+        {RECENT_ACTIVITY.map((a) => (
+          <div
+            key={a.time + a.text}
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 12,
+              fontSize: 13,
+              color: C.text,
+            }}
+          >
+            <span
+              style={{
+                fontFamily: FONT_MONO,
+                fontSize: 11.5,
+                color: C.muted,
+                minWidth: 40,
+              }}
+            >
+              {a.time}
+            </span>
+            <span style={{ color: C.hint }}>·</span>
+            <span style={{ color: C.ink, lineHeight: 1.45 }}>{a.text}</span>
+          </div>
+        ))}
+      </div>
+    </AgendaCard>
+  );
+}
+
+function FollowUpSummary({
+  escalations,
+  monitors,
+  resolved,
+}: {
+  escalations: number;
+  monitors: number;
+  resolved: number;
+}) {
+  return (
+    <AgendaCard title="Follow-up queue" delay={380}>
+      <div style={{ display: "grid", gap: 12 }}>
+        <SummaryRow color={C.red} label="Escalations" count={escalations} />
+        <SummaryRow color={C.amber} label="Monitor" count={monitors} />
+        <SummaryRow color={C.green} label="Recovered" count={resolved} />
+      </div>
+      <div
+        style={{
+          marginTop: 16,
+          paddingTop: 14,
+          borderTop: `1px solid ${C.borderSoft}`,
+        }}
+      >
+        <Link href="/follow-ups" style={{ textDecoration: "none" }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: C.text,
+              borderBottom: `1px solid ${C.text}`,
+              paddingBottom: 1,
+              letterSpacing: 0.1,
+            }}
+          >
+            View all →
+          </span>
+        </Link>
+      </div>
+    </AgendaCard>
+  );
+}
+
+function SummaryRow({
+  color,
+  label,
+  count,
+}: {
+  color: string;
+  label: string;
+  count: number;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <Dot color={color} size={8} />
+      <span style={{ fontSize: 13.5, color: C.text, flex: 1 }}>{label}</span>
+      <span
+        style={{
+          fontFamily: FONT_SERIF,
+          fontSize: 20,
+          fontWeight: 500,
+          color: C.text,
+          letterSpacing: -0.4,
+        }}
+      >
+        {count}
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Section label                                                      */
+/* ------------------------------------------------------------------ */
+
+function SectionLabel({
+  title,
+  count,
+  suffix,
+}: {
+  title: string;
+  count?: string | number;
+  suffix?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        gap: 10,
+        marginBottom: 18,
+      }}
+    >
+      <h3
+        style={{
+          margin: 0,
+          fontSize: 12,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 1.6,
+          color: C.text,
+        }}
+      >
+        {title}
+      </h3>
+      {count != null && (
+        <span
+          style={{
+            fontSize: 11,
+            fontFamily: FONT_MONO,
+            color: C.muted,
+            border: `1px solid ${C.borderSoft}`,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: C.bgAlt,
+          }}
+        >
+          {count}
+          {suffix ? ` ${suffix}` : ""}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+
+export default function DashboardPage() {
+  const {
+    followups,
+    resolvedCount,
+    expandedPatient,
+    setExpandedPatient,
+    flashToast,
+  } = useStore();
+
+  const escalations = followups.filter((f) => f.level === "escalate");
+  const monitors = followups.filter((f) => f.level === "monitor");
+
+  // Realtime simulation toast — preserved from previous behaviour.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const target = escalations[0];
+      if (target) {
+        flashToast(
+          `Realtime · new escalation from ${target.owner} — ${target.patient}`
+        );
+      }
+    }, 4000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div style={{ padding: "0 32px 120px", maxWidth: 1320, margin: "0 auto" }}>
+      <HeroRow escalationCount={escalations.length} />
+
+      <KpiRow />
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1.55fr) minmax(0, 1fr)",
+          gridTemplateColumns: "minmax(0, 1.5fr) minmax(0, 1fr)",
           gap: 28,
           alignItems: "start",
         }}
       >
+        {/* ---------- Left: Today's Schedule ---------- */}
         <div>
-          <SectionTitle
+          <SectionLabel
             title="Today's Schedule"
-            count={PATIENTS.length}
-            action={
-              <div style={{ fontSize: 12, color: C.hint }}>Click any patient for the AI brief</div>
-            }
+            count={`${PATIENTS.length} patients`}
           />
-          <div style={{ display: "grid", gap: 12 }}>
-            {PATIENTS.map((p) => (
-              <PatientCard
+          <div style={{ display: "grid", gap: 10 }}>
+            {PATIENTS.map((p, i) => (
+              <PatientRow
                 key={p.id}
                 p={p}
+                index={i}
                 expanded={expandedPatient === p.id}
                 onToggle={() =>
                   setExpandedPatient(expandedPatient === p.id ? null : p.id)
@@ -311,56 +783,15 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div>
-          <SectionTitle title="Follow-up Queue" count={followups.length} />
-          <div style={{ display: "grid", gap: 10 }}>
-            {followups.length === 0 && (
-              <Card
-                style={{ padding: 24, textAlign: "center", color: C.muted, fontSize: 13 }}
-              >
-                All follow-ups resolved. Nice work.
-              </Card>
-            )}
-            {followups.map((f) => (
-              <FollowUpItem
-                key={f.id}
-                f={f}
-                onClick={() => (f.level === "escalate" ? openEscalation(f) : undefined)}
-              />
-            ))}
-            <Card
-              style={{
-                padding: "14px 16px",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                background: C.greenLight,
-                borderColor: C.greenBorder,
-              }}
-            >
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: "50%",
-                  background: C.green,
-                  color: "#fff",
-                  display: "grid",
-                  placeItems: "center",
-                }}
-              >
-                {Icon.check(15)}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.greenDark }}>
-                  {resolvedCount} recovered this week
-                </div>
-                <div style={{ fontSize: 11, color: C.muted }}>
-                  Auto-closed or doctor-approved
-                </div>
-              </div>
-            </Card>
-          </div>
+        {/* ---------- Right: Agenda widgets ---------- */}
+        <div style={{ display: "grid", gap: 16 }}>
+          <QuickActions />
+          <RecentActivity />
+          <FollowUpSummary
+            escalations={escalations.length}
+            monitors={monitors.length}
+            resolved={resolvedCount}
+          />
         </div>
       </div>
     </div>

@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dot, Icon, Pill } from "@/components/atoms";
-import { C, SHADOW_CARD } from "@/lib/tokens";
+import { Icon } from "@/components/atoms";
+import { BORDER_HAIRLINE, C, FONT_SERIF } from "@/lib/tokens";
 import { useStore } from "./store";
 
 export default function Header() {
@@ -11,11 +11,14 @@ export default function Header() {
   const { followups } = useStore();
   const urgentCount = followups.filter((f) => f.level === "escalate").length;
 
+  // PRD §12 nav order: Dashboard, Consult, Follow-ups, Passports, Analytics.
+  // Follow-ups now lives on its own dedicated route.
   const tabs = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/consult", label: "Consult" },
-    { href: "/analytics", label: "Analytics" },
+    { href: "/follow-ups", label: "Follow-ups" },
     { href: "/passport", label: "Passports" },
+    { href: "/analytics", label: "Analytics" },
   ];
 
   return (
@@ -24,88 +27,150 @@ export default function Header() {
         position: "sticky",
         top: 0,
         zIndex: 50,
-        background: "rgba(246,245,242,0.92)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
-        borderBottom: `1px solid ${C.border}`,
-        padding: "14px 32px",
+        background: "#FFFFFF",
+        borderBottom: BORDER_HAIRLINE,
+        padding: "0 32px",
         display: "flex",
         alignItems: "center",
-        gap: 20,
+        gap: 24,
+        height: 60,
       }}
     >
+      {/* Brand */}
       <Link
         href="/"
-        style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          cursor: "pointer",
+          textDecoration: "none",
+        }}
       >
         <div
           style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: C.brand,
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            background: C.text,
             display: "grid",
             placeItems: "center",
-            boxShadow: "0 6px 14px rgba(79,70,229,0.28)",
           }}
         >
           <span style={{ color: "#fff", display: "grid", placeItems: "center" }}>
-            {Icon.paw(18)}
+            {Icon.paw(16)}
           </span>
         </div>
         <div
-          style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, letterSpacing: -0.3 }}
+          style={{
+            fontFamily: FONT_SERIF,
+            fontSize: 20,
+            fontWeight: 600,
+            letterSpacing: -0.3,
+            color: C.text,
+          }}
         >
           Consilium
         </div>
       </Link>
-      <div style={{ display: "flex", gap: 4, marginLeft: 20 }}>
+
+      {/* Tabs — sans, tightened tracking, 2px bottom accent on active */}
+      <nav style={{ display: "flex", gap: 2, marginLeft: 16, height: "100%" }}>
         {tabs.map((t) => {
-          const active = pathname?.startsWith(t.href);
+          const isActive =
+            pathname === t.href || pathname?.startsWith(t.href + "/");
           return (
-            <Link key={t.href} href={t.href}>
-              <button
+            <Link
+              key={t.label}
+              href={t.href}
+              style={{ textDecoration: "none", display: "flex" }}
+            >
+              <div
                 style={{
-                  padding: "8px 14px",
-                  borderRadius: 10,
-                  background: active ? "#fff" : "transparent",
-                  border: `1px solid ${active ? C.border : "transparent"}`,
-                  boxShadow: active ? SHADOW_CARD : "none",
-                  fontSize: 14,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? C.text : C.muted,
-                  transition: "all 140ms ease",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "0 12px",
+                  fontSize: 13.5,
+                  fontWeight: isActive ? 600 : 500,
+                  letterSpacing: -0.1,
+                  color: isActive ? C.text : C.muted,
+                  borderBottom: isActive
+                    ? `2px solid ${C.text}`
+                    : "2px solid transparent",
+                  marginBottom: -1,
+                  transition: "color 140ms ease",
+                  cursor: "pointer",
                 }}
               >
                 {t.label}
-              </button>
+              </div>
             </Link>
           );
         })}
-      </div>
+      </nav>
+
       <div style={{ flex: 1 }} />
+
+      {/* Urgent count — red dot + number, no wash */}
       {urgentCount > 0 && (
-        <Pill tone="red">
-          <Dot color={C.red} size={7} pulsing /> {urgentCount} urgent
-        </Pill>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: C.text,
+            letterSpacing: -0.1,
+          }}
+        >
+          <span
+            style={{
+              display: "inline-block",
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: C.red,
+            }}
+          />
+          {urgentCount} urgent
+        </div>
       )}
-      <div style={{ fontSize: 13, color: C.muted }}>PawsClinic KL · Mon 20 Apr</div>
+
+      {/* Clinic + date */}
+      <div
+        style={{
+          fontSize: 12.5,
+          color: C.muted,
+          letterSpacing: -0.1,
+          borderLeft: BORDER_HAIRLINE,
+          paddingLeft: 16,
+        }}
+      >
+        PawsClinic KL · Mon 20 Apr
+      </div>
+
+      {/* Doctor identity */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Dr. Amirah</div>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
+            Dr. Amirah
+          </div>
           <div style={{ fontSize: 11, color: C.muted }}>Lead veterinarian</div>
         </div>
         <div
           style={{
-            width: 36,
-            height: 36,
+            width: 30,
+            height: 30,
             borderRadius: "50%",
-            background: C.brand,
-            color: "#fff",
-            fontWeight: 700,
-            fontSize: 14,
+            background: "#FFFFFF",
+            color: C.text,
+            fontWeight: 600,
+            fontSize: 13,
             display: "grid",
             placeItems: "center",
+            border: BORDER_HAIRLINE,
+            fontFamily: FONT_SERIF,
           }}
         >
           A

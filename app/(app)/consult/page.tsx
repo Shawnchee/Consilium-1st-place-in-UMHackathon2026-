@@ -2,17 +2,12 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ReactNode, Suspense, useState } from "react";
+import { ReactNode, Suspense, useMemo, useRef, useState } from "react";
 import { Button, Card, Icon, Pill } from "@/components/atoms";
-import {
-  BriefRow,
-  PageHeader,
-  PetAvatar,
-  SectionTitle,
-} from "@/components/app-shell/page-header";
+import { PageHeader, PetAvatar } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
 import { GLM_CONSULT_OUTPUT, PATIENTS } from "@/lib/data";
-import { C } from "@/lib/tokens";
+import { C, FONT_MONO, FONT_SERIF, SHADOW_CARD } from "@/lib/tokens";
 import type {
   BillingItem,
   PrescriptionItem,
@@ -20,93 +15,210 @@ import type {
   TodoItem,
 } from "@/lib/types";
 
+// ─────────────────────────────────────────────────────────────────────
+// Demo scenarios — paste-in templates (PRD §F2 fidelity)
+// ─────────────────────────────────────────────────────────────────────
+const SCENARIOS: { id: string; label: string; blurb: string; text: string }[] = [
+  {
+    id: "ccl",
+    label: "CCL partial tear (Milo)",
+    blurb: "Right hind limp, 2wk · canonical F2 example",
+    text:
+      "Came in for limping on right hind for past 2 weeks. Worse on stairs. No trauma witnessed. " +
+      "Palpated right stifle — pain response, mild joint effusion. Positive cranial drawer, partial. " +
+      "Doing rads today, lateral + caudocranial. Send home with Meloxicam 0.1mg/kg SID x7d, gabapentin for comfort. " +
+      "E-collar. Strict rest 14 days. Recheck in 7.",
+  },
+  {
+    id: "otitis",
+    label: "Otitis recheck (Luna)",
+    blurb: "Ear canal still inflamed · R ear",
+    text:
+      "Recheck right ear post Otomax course. Canal still mildly erythematous, minimal debris, no odor. " +
+      "Cytology clean. Continue cleaning wipes twice weekly, stop Otomax. Owner wants annual vaccines today — DHPP + Lepto due. " +
+      "Also discussed dental — owner declining again.",
+  },
+  {
+    id: "gi",
+    label: "Acute GI (Biscuit)",
+    blurb: "Vomiting + soft stool · 2 days",
+    text:
+      "2-day history of vomiting (3x yesterday) and soft stool. Still drinking, appetite reduced. " +
+      "No dietary indiscretion reported. Abdomen soft, non-painful. BW stable. Temp 38.9. " +
+      "Start bland diet 5 days, metronidazole 15mg/kg BID x5d, probiotic sachet. " +
+      "Recheck if not improved in 48h. Fecal float recommended.",
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────
+// Reusable card shell — flat, hairline, editorial
+// ─────────────────────────────────────────────────────────────────────
 function OutputCardShell({
   title,
-  subtitle,
+  meta,
+  accent,
   children,
+  footer,
+  delay = 0,
 }: {
   title: string;
-  subtitle?: string;
+  meta?: ReactNode;
+  accent?: "amber";
   children: ReactNode;
+  footer?: ReactNode;
+  delay?: number;
 }) {
   return (
-    <Card style={{ padding: 0, overflow: "hidden", animation: "slideIn 340ms ease both" }}>
+    <Card
+      style={{
+        padding: 0,
+        overflow: "hidden",
+        boxShadow: SHADOW_CARD,
+        borderLeft:
+          accent === "amber"
+            ? `2px solid ${C.amberBorder}`
+            : `1px solid ${C.border}`,
+        animation: `slideIn 420ms ease both`,
+        animationDelay: `${delay}ms`,
+      }}
+    >
       <div
         style={{
-          padding: "12px 18px",
+          padding: "14px 20px",
           borderBottom: `1px solid ${C.border}`,
           display: "flex",
-          alignItems: "center",
+          alignItems: "baseline",
           justifyContent: "space-between",
+          gap: 12,
         }}
       >
-        <div
+        <h3
           style={{
-            fontSize: 11,
-            fontWeight: 700,
-            letterSpacing: 1.4,
-            textTransform: "uppercase",
-            color: C.muted,
+            fontFamily: FONT_SERIF,
+            fontSize: 17,
+            fontWeight: 600,
+            letterSpacing: -0.2,
+            margin: 0,
+            color: C.text,
           }}
         >
           {title}
-        </div>
-        {subtitle && <div style={{ fontSize: 11, color: C.hint }}>{subtitle}</div>}
+        </h3>
+        {meta && (
+          <div style={{ fontSize: 11, color: C.hint, letterSpacing: 0.3 }}>
+            {meta}
+          </div>
+        )}
       </div>
-      <div style={{ padding: 18 }}>{children}</div>
+      <div style={{ padding: "18px 20px" }}>{children}</div>
+      {footer && (
+        <div
+          style={{
+            borderTop: `1px solid ${C.border}`,
+            padding: "12px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            background: C.bgAlt,
+          }}
+        >
+          {footer}
+        </div>
+      )}
     </Card>
   );
 }
 
-function SoapCard({ s }: { s: SoapNote }) {
-  const rows: { k: "S" | "O" | "A" | "P"; label: string; v: string }[] = [
-    { k: "S", label: "Subjective", v: s.S },
-    { k: "O", label: "Objective", v: s.O },
-    { k: "A", label: "Assessment", v: s.A },
-    { k: "P", label: "Plan", v: s.P },
+// ─────────────────────────────────────────────────────────────────────
+// SOAP
+// ─────────────────────────────────────────────────────────────────────
+function SoapCard({ s, onApprove }: { s: SoapNote; onApprove: () => void }) {
+  const rows: { k: "S" | "O" | "A" | "P"; v: string }[] = [
+    { k: "S", v: s.S },
+    { k: "O", v: s.O },
+    { k: "A", v: s.A },
+    { k: "P", v: s.P },
   ];
   return (
-    <OutputCardShell title="SOAP Note" subtitle="auto-extracted">
-      {rows.map((r) => (
-        <div key={r.k} style={{ marginBottom: 11 }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 3 }}>
-            <span
-              style={{
-                display: "inline-grid",
-                placeItems: "center",
-                width: 22,
-                height: 22,
-                borderRadius: 6,
-                background: C.greenLight,
-                color: C.greenDark,
-                fontSize: 11,
-                fontWeight: 800,
-              }}
-            >
-              {r.k}
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                color: C.muted,
-                textTransform: "uppercase",
-                letterSpacing: 1,
-                fontWeight: 600,
-              }}
-            >
-              {r.label}
-            </span>
-          </div>
-          <div style={{ fontSize: 13, lineHeight: 1.5, color: C.text }}>{r.v}</div>
+    <OutputCardShell
+      title="SOAP note"
+      meta="auto-extracted"
+      delay={0}
+      footer={
+        <>
+          <div style={{ flex: 1 }} />
+          <Button variant="ghost" size="sm" icon={Icon.edit(13)}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
+            Approve
+          </Button>
+        </>
+      }
+    >
+      {rows.map((r, i) => (
+        <div
+          key={r.k}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "28px 1fr",
+            gap: 14,
+            padding: "10px 0",
+            borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 11,
+              fontWeight: 700,
+              color: C.muted,
+              letterSpacing: 0.5,
+              display: "inline-grid",
+              placeItems: "center",
+              width: 24,
+              height: 22,
+              border: `1px solid ${C.border}`,
+              borderRadius: 4,
+              background: "#fff",
+            }}
+          >
+            {r.k}
+          </span>
+          <div style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>{r.v}</div>
         </div>
       ))}
     </OutputCardShell>
   );
 }
 
-function PrescriptionCard({ rx }: { rx: PrescriptionItem[] }) {
+// ─────────────────────────────────────────────────────────────────────
+// Prescription
+// ─────────────────────────────────────────────────────────────────────
+function PrescriptionCard({
+  rx,
+  onApprove,
+}: {
+  rx: PrescriptionItem[];
+  onApprove: () => void;
+}) {
   return (
-    <OutputCardShell title="Prescription" subtitle={`${rx.length} items`}>
+    <OutputCardShell
+      title="Prescription"
+      meta={`${rx.length} drug${rx.length === 1 ? "" : "s"}`}
+      delay={90}
+      footer={
+        <>
+          <div style={{ flex: 1 }} />
+          <Button variant="ghost" size="sm" icon={Icon.edit(13)}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
+            Approve
+          </Button>
+        </>
+      }
+    >
       {rx.map((r, i) => (
         <div
           key={i}
@@ -115,15 +227,54 @@ function PrescriptionCard({ rx }: { rx: PrescriptionItem[] }) {
             borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{r.drug}</div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 5, lineHeight: 1.55 }}>
-            <div>
-              <b style={{ color: C.ink, fontWeight: 600 }}>Dose:</b> {r.dose}
-            </div>
-            <div>
-              <b style={{ color: C.ink, fontWeight: 600 }}>Duration:</b> {r.dur} ·{" "}
-              <b style={{ color: C.ink, fontWeight: 600 }}>Qty:</b> {r.qty}
-            </div>
+          <div
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 13.5,
+              fontWeight: 700,
+              color: C.text,
+              letterSpacing: -0.1,
+            }}
+          >
+            {r.drug}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 10,
+              marginTop: 8,
+            }}
+          >
+            {[
+              { k: "Dose", v: r.dose },
+              { k: "Duration", v: r.dur },
+              { k: "Qty", v: r.qty },
+            ].map((f) => (
+              <div key={f.k}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    letterSpacing: 1.2,
+                    textTransform: "uppercase",
+                    color: C.hint,
+                    fontWeight: 600,
+                  }}
+                >
+                  {f.k}
+                </div>
+                <div
+                  style={{
+                    fontFamily: FONT_MONO,
+                    fontSize: 12.5,
+                    color: C.text,
+                    marginTop: 3,
+                  }}
+                >
+                  {f.v}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ))}
@@ -131,87 +282,174 @@ function PrescriptionCard({ rx }: { rx: PrescriptionItem[] }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Billing
+// ─────────────────────────────────────────────────────────────────────
 function BillingCard({
   items,
   total,
   flagged,
+  onApprove,
 }: {
   items: BillingItem[];
   total: number;
   flagged: number;
+  onApprove: () => void;
 }) {
   return (
-    <OutputCardShell title="Billing checklist" subtitle={`RM ${total}`}>
+    <OutputCardShell
+      title="Billing recovery"
+      meta={`${items.length} items`}
+      delay={180}
+      footer={
+        <>
+          <div
+            style={{
+              fontFamily: FONT_SERIF,
+              fontSize: 18,
+              fontWeight: 600,
+              color: C.text,
+              letterSpacing: -0.2,
+            }}
+          >
+            Total{" "}
+            <span style={{ fontFamily: FONT_MONO, fontSize: 15 }}>
+              RM {total}
+            </span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <Button variant="ghost" size="sm" icon={Icon.edit(13)}>
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
+            Approve
+          </Button>
+        </>
+      }
+    >
       {items.map((it, i) => (
         <div
           key={i}
           style={{
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 10,
-            padding: "9px 11px",
-            marginBottom: 6,
+            display: "grid",
+            gridTemplateColumns: "18px 1fr auto",
+            gap: 12,
+            alignItems: "start",
+            padding: "10px 12px",
+            marginLeft: -8,
+            marginRight: -8,
+            marginBottom: 2,
             borderRadius: 8,
-            background: it.flagged ? C.amberLight : "transparent",
-            border: it.flagged ? `1px solid ${C.amberBorder}` : "1px solid transparent",
+            borderLeft: it.flagged
+              ? `2px solid ${C.amber}`
+              : `2px solid transparent`,
+            background: "transparent",
           }}
         >
-          <span style={{ color: it.flagged ? C.amber : C.green, marginTop: 2 }}>
-            {it.flagged ? Icon.warn(13) : Icon.check(13)}
+          <span
+            style={{
+              color: it.flagged ? C.amber : C.green,
+              display: "inline-flex",
+              marginTop: 2,
+            }}
+          >
+            {it.flagged ? Icon.warn(14) : Icon.check(14)}
           </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
-                fontSize: 13,
-                fontWeight: it.flagged ? 700 : 500,
+                fontSize: 13.5,
                 color: C.text,
+                fontWeight: it.flagged ? 600 : 500,
               }}
             >
               {it.item}
             </div>
             {it.flagged && (
-              <div style={{ fontSize: 11, color: C.amber, marginTop: 2, fontStyle: "italic" }}>
-                {it.note}
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  marginTop: 5,
+                  padding: "2px 8px",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: 0.3,
+                  color: C.amber,
+                  border: `1px solid ${C.amberBorder}`,
+                  borderRadius: 999,
+                  background: "transparent",
+                }}
+              >
+                {Icon.warn(10)} In notes, not yet billed
               </div>
             )}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>RM {it.price}</div>
+          <div
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 13,
+              fontWeight: 600,
+              color: C.text,
+              whiteSpace: "nowrap",
+            }}
+          >
+            RM {it.price}
+          </div>
         </div>
       ))}
-      {flagged > 0 && (
-        <div
-          style={{
-            marginTop: 10,
-            padding: "10px 12px",
-            borderRadius: 8,
-            background: C.amberLight,
-            border: `1px solid ${C.amberBorder}`,
-            fontSize: 12,
-            color: C.amber,
-            fontWeight: 600,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {Icon.warn(13)} RM {flagged} flagged as missed — would have been billed
-        </div>
-      )}
+      <div
+        style={{
+          marginTop: 14,
+          paddingTop: 12,
+          borderTop: `1px solid ${C.borderSoft}`,
+          fontSize: 11,
+          color: C.hint,
+          lineHeight: 1.5,
+          fontStyle: "italic",
+        }}
+      >
+        Impact: 10% billing recovery × 400 consults/month × RM 250 avg = RM
+        10,000/month recovered.
+      </div>
+      <div style={{ display: "none" }}>{flagged}</div>
     </OutputCardShell>
   );
 }
 
-function TodoCard({ todos }: { todos: TodoItem[] }) {
+// ─────────────────────────────────────────────────────────────────────
+// Todos
+// ─────────────────────────────────────────────────────────────────────
+function TodoCard({ todos, onApprove }: { todos: TodoItem[]; onApprove: () => void }) {
   const [done, setDone] = useState<Record<number, boolean>>({});
+  const assigneeTone = (who: string): "green" | "amber" | "neutral" => {
+    const w = who.toLowerCase();
+    if (w.includes("vet") || w.includes("doctor")) return "green";
+    if (w.includes("nurse")) return "amber";
+    return "neutral";
+  };
   return (
-    <OutputCardShell title="Staff to-do" subtitle={`${todos.length} tasks`}>
+    <OutputCardShell
+      title="Staff to-do"
+      meta={`${todos.length} tasks`}
+      delay={270}
+      footer={
+        <>
+          <div style={{ flex: 1 }} />
+          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
+            Approve
+          </Button>
+        </>
+      }
+    >
       {todos.map((t, i) => (
         <div
           key={i}
           onClick={() => setDone((d) => ({ ...d, [i]: !d[i] }))}
           style={{
             display: "flex",
-            alignItems: "flex-start",
+            alignItems: "center",
             gap: 12,
             padding: "10px 0",
             cursor: "pointer",
@@ -220,366 +458,753 @@ function TodoCard({ todos }: { todos: TodoItem[] }) {
         >
           <div
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: 6,
-              border: `1.5px solid ${done[i] ? C.green : C.hint}`,
+              width: 18,
+              height: 18,
+              borderRadius: 4,
+              border: `1.5px solid ${done[i] ? C.green : C.border}`,
               background: done[i] ? C.green : "transparent",
               color: "#fff",
               display: "grid",
               placeItems: "center",
-              marginTop: 1,
               flexShrink: 0,
               transition: "all 140ms ease",
             }}
           >
-            {done[i] && Icon.check(13)}
+            {done[i] && Icon.check(11)}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 13,
-                color: done[i] ? C.muted : C.text,
-                textDecoration: done[i] ? "line-through" : "none",
-                lineHeight: 1.4,
-              }}
-            >
-              {t.task}
-            </div>
-            <div style={{ fontSize: 11, color: C.hint, marginTop: 3 }}>→ {t.who}</div>
+          <div
+            style={{
+              flex: 1,
+              fontSize: 13.5,
+              color: done[i] ? C.muted : C.text,
+              textDecoration: done[i] ? "line-through" : "none",
+              lineHeight: 1.4,
+            }}
+          >
+            {t.task}
           </div>
+          <Pill tone={assigneeTone(t.who)} style={{ fontSize: 11, padding: "2px 9px" }}>
+            {t.who}
+          </Pill>
         </div>
       ))}
     </OutputCardShell>
   );
 }
 
-function GeneratingPlaceholder() {
+// ─────────────────────────────────────────────────────────────────────
+// Calm generating indicator — hairline marquee, no gradients
+// ─────────────────────────────────────────────────────────────────────
+function GeneratingMarquee() {
   return (
-    <Card
+    <div
       style={{
-        padding: 28,
-        display: "flex",
-        alignItems: "center",
-        gap: 18,
-        marginBottom: 20,
+        position: "relative",
+        height: 2,
+        background: C.borderSoft,
+        borderRadius: 999,
+        overflow: "hidden",
+        marginTop: 14,
       }}
     >
       <div
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: "50%",
-          border: `3px solid ${C.border}`,
-          borderTopColor: C.green,
-          animation: "spinSlow .9s linear infinite",
+          position: "absolute",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: "30%",
+          background: C.text,
+          animation: "marquee 1.4s linear infinite",
+          borderRadius: 999,
         }}
       />
-      <div>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>Consilium is reading your notes…</div>
-        <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-          Extracting SOAP · cross-referencing billing matrix · drafting staff to-dos
-        </div>
-      </div>
-    </Card>
+    </div>
   );
 }
 
+function DotPulse() {
+  return (
+    <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          style={{
+            width: 4,
+            height: 4,
+            borderRadius: "50%",
+            background: C.muted,
+            animation: "pulse 1.2s ease-in-out infinite",
+            animationDelay: `${i * 160}ms`,
+            display: "inline-block",
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Status pill (flat, hairline)
+// ─────────────────────────────────────────────────────────────────────
+function StatusPill({
+  state,
+}: {
+  state: "idle" | "generating" | "ready";
+}) {
+  const map = {
+    idle: { label: "Awaiting input", tone: "neutral" as const, dotColor: C.hint },
+    generating: {
+      label: "Generating",
+      tone: "neutral" as const,
+      dotColor: C.muted,
+    },
+    ready: {
+      label: "Ready — review & approve",
+      tone: "green" as const,
+      dotColor: C.green,
+    },
+  };
+  const v = map[state];
+  return (
+    <Pill tone={v.tone} style={{ fontSize: 11.5 }}>
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: v.dotColor,
+          display: "inline-block",
+          animation: state === "generating" ? "pulse 1.2s ease-in-out infinite" : "none",
+        }}
+      />
+      {v.label}
+      {state === "generating" && (
+        <span style={{ marginLeft: 4 }}>
+          <DotPulse />
+        </span>
+      )}
+    </Pill>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Example scenarios dropdown
+// ─────────────────────────────────────────────────────────────────────
+function ExampleDropdown({ onPick }: { onPick: (text: string, label: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "7px 12px",
+          borderRadius: 8,
+          background: "#fff",
+          border: `1px solid ${C.border}`,
+          color: C.text,
+          fontSize: 12.5,
+          fontWeight: 500,
+          fontFamily: "inherit",
+          cursor: "pointer",
+          letterSpacing: 0.1,
+        }}
+      >
+        Example scenarios {Icon.chevron(12, open ? "up" : "down")}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            right: 0,
+            minWidth: 280,
+            background: "#fff",
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            boxShadow: SHADOW_CARD,
+            padding: 4,
+            zIndex: 20,
+            animation: "slideIn 180ms ease both",
+          }}
+        >
+          {SCENARIOS.map((sc) => (
+            <button
+              key={sc.id}
+              type="button"
+              onClick={() => {
+                onPick(sc.text, sc.label);
+                setOpen(false);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                padding: "10px 12px",
+                border: "none",
+                background: "transparent",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = C.bgAlt)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                {sc.label}
+              </div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                {sc.blurb}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────────────────────────────
 function ConsultContent() {
   const params = useSearchParams();
   const pid = params.get("pid");
   const patient = PATIENTS.find((p) => p.id === pid) || PATIENTS[0];
   const { flashToast } = useStore();
 
-  const [notes, setNotes] = useState(
-    "Came in for limping on right hind for past 2 weeks. Worse on stairs. No trauma. Palpated right stifle - pain response, mild effusion. " +
-      "Positive drawer sign, partial. Will do rads today. Send home with Meloxicam, gabapentin for comfort. E-collar. Recheck 7 days.",
-  );
+  const [notes, setNotes] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordSec, setRecordSec] = useState(0);
+  const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const output = GLM_CONSULT_OUTPUT;
-  const billTotal = output.billing.reduce((a, b) => a + b.price, 0);
-  const billFlagged = output.billing
-    .filter((b) => b.flagged)
-    .reduce((a, b) => a + b.price, 0);
+  const billTotal = useMemo(
+    () => output.billing.reduce((a, b) => a + b.price, 0),
+    [output]
+  );
+  const billFlagged = useMemo(
+    () =>
+      output.billing.filter((b) => b.flagged).reduce((a, b) => a + b.price, 0),
+    [output]
+  );
 
   const generate = () => {
+    if (!notes.trim()) return;
     setGenerating(true);
     setGenerated(false);
+    const delay = 900 + Math.floor(Math.random() * 300);
     setTimeout(() => {
       setGenerating(false);
       setGenerated(true);
-    }, 1200);
+    }, delay);
   };
 
-  const approve = () => {
-    flashToast("All 4 outputs approved · RM 145 billing recovered");
+  const toggleRecord = () => {
+    if (recording) {
+      if (recordTimer.current) clearInterval(recordTimer.current);
+      recordTimer.current = null;
+      setRecording(false);
+      setRecordSec(0);
+    } else {
+      setRecording(true);
+      setRecordSec(0);
+      recordTimer.current = setInterval(() => {
+        setRecordSec((s) => s + 1);
+      }, 1000);
+    }
   };
+
+  const pickExample = (text: string, label: string) => {
+    setNotes(text);
+    flashToast(`Example loaded · ${label}`);
+  };
+
+  const status: "idle" | "generating" | "ready" = generating
+    ? "generating"
+    : generated
+    ? "ready"
+    : "idle";
+
+  const fmtTime = (n: number) =>
+    `${Math.floor(n / 60)}:${(n % 60).toString().padStart(2, "0")}`;
 
   return (
-    <div style={{ padding: "0 32px 100px", maxWidth: 1480, margin: "0 auto" }}>
+    <div style={{ padding: "0 32px 120px", maxWidth: 1480, margin: "0 auto" }}>
+      {/* Patient context bar */}
       <PageHeader
-        eyebrow={`Consult · ${patient.name}`}
+        eyebrow="Consultation"
         title="Capture today's visit."
-        sub="Dictate or type — Consilium returns a structured SOAP note, prescription, billing checklist, and staff to-do list in seconds."
+        sub={`Dr. Amirah · PawsClinic KL · ${new Date().toLocaleDateString("en-GB", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        })}`}
         right={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm" icon={Icon.back(14)}>
-                Dashboard
-              </Button>
-            </Link>
-            <Pill tone={patient.tagColor}>{patient.tag}</Pill>
-          </div>
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm" icon={Icon.back(14)}>
+              Dashboard
+            </Button>
+          </Link>
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: 28 }}>
-        <div>
-          <SectionTitle title="Consultation notes" />
-          <Card style={{ padding: 0, marginBottom: 28, overflow: "hidden" }}>
+      {/* Patient strip + probe */}
+      <Card
+        style={{
+          padding: 0,
+          marginBottom: 28,
+          overflow: "hidden",
+          boxShadow: SHADOW_CARD,
+        }}
+      >
+        <div
+          style={{
+            padding: "16px 20px",
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <PetAvatar name={patient.name} />
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
-                padding: "14px 20px",
+                fontFamily: FONT_SERIF,
+                fontSize: 22,
+                fontWeight: 600,
+                color: C.text,
+                letterSpacing: -0.4,
+                lineHeight: 1.1,
+              }}
+            >
+              {patient.name}
+            </div>
+            <div
+              style={{
+                fontSize: 12.5,
+                color: C.muted,
+                marginTop: 3,
+              }}
+            >
+              {patient.species} · {patient.breed} · {patient.age} · {patient.sex}
+            </div>
+          </div>
+          <div
+            style={{
+              height: 28,
+              width: 1,
+              background: C.border,
+              margin: "0 4px",
+            }}
+          />
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                letterSpacing: 1.3,
+                textTransform: "uppercase",
+                color: C.hint,
+                fontWeight: 600,
+              }}
+            >
+              Owner
+            </div>
+            <div style={{ fontSize: 13, color: C.text, marginTop: 2 }}>
+              {patient.owner}
+            </div>
+          </div>
+          <div style={{ flex: 1 }} />
+          <Pill tone={patient.tagColor}>{patient.tag}</Pill>
+          <Link href="/dashboard">
+            <button
+              type="button"
+              style={{
+                background: "transparent",
+                border: "none",
+                color: C.muted,
+                fontSize: 12.5,
+                cursor: "pointer",
+                fontFamily: "inherit",
+                padding: "6px 2px",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
+            >
+              Switch patient
+            </button>
+          </Link>
+        </div>
+        {/* Probe reminder row — quiet muted bar */}
+        <div
+          style={{
+            borderTop: `1px solid ${C.border}`,
+            padding: "10px 20px",
+            background: C.bgAlt,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 12.5,
+            color: C.muted,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: 1.4,
+              textTransform: "uppercase",
+              color: C.green,
+            }}
+          >
+            Probe today
+          </span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontWeight: 500 }}>
+            {patient.brief.probe}
+          </span>
+        </div>
+      </Card>
+
+      {/* Two-column working area */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 45fr) minmax(0, 55fr)",
+          gap: 24,
+          alignItems: "start",
+        }}
+      >
+        {/* LEFT — input */}
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 10,
+              marginBottom: 12,
+            }}
+          >
+            <h3
+              style={{
+                fontFamily: FONT_SERIF,
+                fontSize: 18,
+                fontWeight: 600,
+                letterSpacing: -0.3,
+                margin: 0,
+                color: C.text,
+              }}
+            >
+              Consultation notes
+            </h3>
+            <div style={{ flex: 1 }} />
+            <ExampleDropdown onPick={pickExample} />
+          </div>
+
+          <Card
+            style={{
+              padding: 0,
+              overflow: "hidden",
+              boxShadow: SHADOW_CARD,
+            }}
+          >
+            {/* Mic bar */}
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: `1px solid ${C.border}`,
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                borderBottom: `1px solid ${C.border}`,
+                background: "#fff",
               }}
             >
-              <span style={{ color: C.green, display: "inline-flex" }}>{Icon.spark(14)}</span>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: 1.4,
-                  textTransform: "uppercase",
-                  color: C.muted,
-                }}
-              >
-                Raw input
-              </div>
-              <div style={{ flex: 1 }} />
               <button
-                onClick={() => setRecording((r) => !r)}
+                type="button"
+                onClick={toggleRecord}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 6,
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  background: recording ? C.redLight : "#F3F2EF",
+                  gap: 8,
+                  padding: "7px 12px",
+                  borderRadius: 8,
+                  background: recording ? "#fff" : "#fff",
                   border: `1px solid ${recording ? C.redBorder : C.border}`,
                   color: recording ? C.red : C.text,
-                  fontSize: 12,
+                  fontSize: 12.5,
                   fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
                 }}
               >
-                {Icon.mic(14)} {recording ? "Recording…" : "Voice input"}
+                {recording ? (
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: C.red,
+                      animation: "pulse 1.2s ease-in-out infinite",
+                      display: "inline-block",
+                    }}
+                  />
+                ) : (
+                  Icon.mic(13)
+                )}
+                {recording ? `Recording ${fmtTime(recordSec)}` : "Record voice"}
               </button>
+              <div style={{ flex: 1 }} />
+              <div
+                style={{
+                  fontSize: 11,
+                  color: C.hint,
+                  letterSpacing: 0.3,
+                }}
+              >
+                {notes.length} chars
+              </div>
             </div>
+
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Type or dictate your notes…"
+              placeholder="Dictate or type consultation notes…"
               style={{
                 width: "100%",
-                minHeight: 180,
+                minHeight: 320,
                 resize: "vertical",
-                padding: "18px 22px",
+                padding: "20px 22px",
                 border: "none",
                 outline: "none",
-                fontSize: 15,
-                lineHeight: 1.6,
+                fontSize: 14.5,
+                lineHeight: 1.65,
                 color: C.text,
+                fontFamily: "inherit",
                 background: "#fff",
+                display: "block",
+                boxSizing: "border-box",
               }}
             />
-            <div
-              style={{
-                borderTop: `1px solid ${C.border}`,
-                padding: "14px 18px",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                background: "#FCFBF9",
-              }}
-            >
-              <div style={{ fontSize: 12, color: C.muted }}>
-                {notes.length} chars · GLM will cross-reference billing matrix + prior visits
-              </div>
-              <div style={{ flex: 1 }} />
-              <Button variant="ghost" size="sm">
-                Clear
-              </Button>
-              <Button size="md" onClick={generate} icon={Icon.spark(14)}>
-                {generating ? "Generating…" : generated ? "Regenerate" : "Generate"}
-              </Button>
-            </div>
           </Card>
 
-          {generating && <GeneratingPlaceholder />}
-
-          {generated && (
-            <>
-              <SectionTitle
-                title="Structured output"
-                action={<div style={{ fontSize: 12, color: C.hint }}>4 cards · tap to edit</div>}
-              />
-              <div
-                style={{
-                  display: "grid",
-                  gap: 16,
-                  gridTemplateColumns: "repeat(2, 1fr)",
-                  marginBottom: 20,
-                }}
-              >
-                <SoapCard s={output.soap} />
-                <PrescriptionCard rx={output.prescription} />
-                <BillingCard items={output.billing} total={billTotal} flagged={billFlagged} />
-                <TodoCard todos={output.todos} />
-              </div>
-
-              <Card
-                style={{
-                  padding: "16px 20px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  animation: "slideIn 320ms ease both",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: "50%",
-                      background: C.greenLight,
-                      color: C.green,
-                      display: "grid",
-                      placeItems: "center",
-                      border: `1px solid ${C.greenBorder}`,
-                    }}
-                  >
-                    {Icon.check(16)}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>
-                      4 outputs ready · RM {billTotal} total
-                    </div>
-                    <div style={{ fontSize: 12, color: C.muted }}>
-                      RM {billFlagged} caught as missed billing · 4 tasks queued
-                    </div>
-                  </div>
-                </div>
-                <div style={{ flex: 1 }} />
-                <Button variant="ghost" size="md">
-                  Edit all
-                </Button>
-                <Button size="md" onClick={approve} icon={Icon.check(14)}>
-                  Approve All
-                </Button>
-              </Card>
-            </>
-          )}
-
-          {!generated && !generating && (
-            <Card style={{ padding: 50, textAlign: "center", color: C.muted }}>
-              <div
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 12,
-                  background: C.brandLight,
-                  color: C.brand,
-                  border: `1px solid ${C.brandBorder}`,
-                  display: "grid",
-                  placeItems: "center",
-                  margin: "0 auto 14px",
-                }}
-              >
-                {Icon.spark(22)}
-              </div>
-              <div
-                style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}
-              >
-                Ready to structure your notes
-              </div>
-              <div style={{ fontSize: 14 }}>
-                Click <b>Generate</b> — Consilium produces SOAP, prescription, billing, and to-dos.
-              </div>
-            </Card>
-          )}
-        </div>
-
-        <div>
-          <SectionTitle title="Patient context" />
-          <Card style={{ padding: 20, marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
-              <PetAvatar name={patient.name} />
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700 }}>{patient.name}</div>
-                <div style={{ fontSize: 12, color: C.muted }}>
-                  {patient.breed} · {patient.age} · {patient.sex}
-                </div>
-              </div>
-            </div>
+          {/* CTA row */}
+          <div
+            style={{
+              marginTop: 14,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
             <div
               style={{
                 fontSize: 12,
-                color: C.muted,
-                padding: "10px 12px",
-                background: C.bgAlt,
-                borderRadius: 8,
-                lineHeight: 1.5,
+                color: C.hint,
+                lineHeight: 1.4,
+                flex: 1,
               }}
             >
-              <b style={{ color: C.text }}>Owner:</b> {patient.owner}
-              <br />
-              <b style={{ color: C.text }}>Phone:</b> {patient.ownerPhone}
+              Consilium cross-references your notes against the clinic billing
+              matrix and past visits.
             </div>
-          </Card>
-          <SectionTitle title="Pre-consult brief" />
-          <Card style={{ padding: 18 }}>
-            <BriefRow k="Last visit" v={patient.brief.lastVisit} />
-            <BriefRow k="Chronic" v={patient.brief.chronic} />
-            <BriefRow k="Compliance" v={patient.brief.compliance} />
-            <BriefRow k="Pending" v={patient.brief.pending} />
-            <div
+            {notes && (
+              <Button variant="ghost" size="sm" onClick={() => setNotes("")}>
+                Clear
+              </Button>
+            )}
+            <Button
+              size="md"
+              onClick={generate}
+              icon={Icon.spark(14)}
+              style={
+                !notes.trim() || generating
+                  ? { opacity: 0.45, pointerEvents: "none" }
+                  : undefined
+              }
+            >
+              {generating
+                ? "Generating…"
+                : generated
+                ? "Regenerate structured output"
+                : "Generate structured output"}
+            </Button>
+          </div>
+          {generating && <GeneratingMarquee />}
+        </div>
+
+        {/* RIGHT — output */}
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: 10,
+              marginBottom: 12,
+            }}
+          >
+            <h3
               style={{
-                marginTop: 12,
-                padding: "10px 12px",
-                background: C.greenLight,
-                border: `1px solid ${C.greenBorder}`,
-                borderRadius: 10,
+                fontFamily: FONT_SERIF,
+                fontSize: 18,
+                fontWeight: 600,
+                letterSpacing: -0.3,
+                margin: 0,
+                color: C.text,
+              }}
+            >
+              Structured output
+            </h3>
+            <div style={{ flex: 1 }} />
+            <StatusPill state={status} />
+          </div>
+
+          {status === "idle" && (
+            <Card
+              style={{
+                padding: "56px 28px",
+                textAlign: "center",
+                boxShadow: SHADOW_CARD,
               }}
             >
               <div
                 style={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  letterSpacing: 1.5,
-                  color: C.green,
-                  textTransform: "uppercase",
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  margin: "0 auto 14px",
+                  border: `1px solid ${C.border}`,
+                  display: "grid",
+                  placeItems: "center",
+                  color: C.muted,
+                  background: "#fff",
                 }}
               >
-                Probe today
+                {Icon.spark(18)}
+              </div>
+              <div
+                style={{
+                  fontFamily: FONT_SERIF,
+                  fontSize: 18,
+                  fontWeight: 600,
+                  letterSpacing: -0.2,
+                  color: C.text,
+                  marginBottom: 6,
+                }}
+              >
+                Awaiting notes
               </div>
               <div
                 style={{
                   fontSize: 13,
-                  color: C.greenDark,
-                  marginTop: 3,
-                  fontWeight: 500,
+                  color: C.muted,
+                  maxWidth: 380,
+                  margin: "0 auto",
+                  lineHeight: 1.55,
                 }}
               >
-                {patient.brief.probe}
+                Paste or dictate a consult, then press{" "}
+                <b style={{ color: C.text }}>Generate</b>. SOAP, prescription,
+                billing recovery, and staff to-dos appear here.
               </div>
+            </Card>
+          )}
+
+          {status === "generating" && (
+            <Card
+              style={{
+                padding: "44px 28px",
+                boxShadow: SHADOW_CARD,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: FONT_SERIF,
+                  fontSize: 17,
+                  fontWeight: 600,
+                  color: C.text,
+                  marginBottom: 6,
+                }}
+              >
+                Reading consultation notes
+              </div>
+              <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>
+                Extracting SOAP · cross-referencing billing · drafting to-dos{" "}
+                <DotPulse />
+              </div>
+              <div style={{ maxWidth: 280, margin: "0 auto" }}>
+                <GeneratingMarquee />
+              </div>
+            </Card>
+          )}
+
+          {status === "ready" && (
+            <div style={{ display: "grid", gap: 14 }}>
+              <SoapCard
+                s={output.soap}
+                onApprove={() => flashToast("SOAP note approved")}
+              />
+              <PrescriptionCard
+                rx={output.prescription}
+                onApprove={() =>
+                  flashToast("Prescription approved · queued for dispensing")
+                }
+              />
+
+              {/* Recoverable callout — thin amber border, no wash */}
+              {billFlagged > 0 && (
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 14px",
+                    borderRadius: 999,
+                    border: `1px solid ${C.amberBorder}`,
+                    background: "transparent",
+                    color: C.amber,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    alignSelf: "flex-start",
+                    width: "fit-content",
+                    animation: "slideIn 380ms ease both",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: C.amber,
+                      display: "inline-block",
+                    }}
+                  />
+                  <span style={{ fontFamily: FONT_MONO }}>RM {billFlagged}</span>{" "}
+                  recoverable — 2 items flagged in notes, not yet billed
+                </div>
+              )}
+
+              <BillingCard
+                items={output.billing}
+                total={billTotal}
+                flagged={billFlagged}
+                onApprove={() =>
+                  flashToast(`Billing approved · RM ${billFlagged} recovered`)
+                }
+              />
+              <TodoCard
+                todos={output.todos}
+                onApprove={() => flashToast("Staff to-dos dispatched")}
+              />
             </div>
-          </Card>
+          )}
         </div>
       </div>
     </div>

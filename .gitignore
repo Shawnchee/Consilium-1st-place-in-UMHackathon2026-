@@ -41,5 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 .claude
-PRD.md
+# PRD.md
 skills-lock.json
