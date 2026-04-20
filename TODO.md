@@ -39,18 +39,19 @@ Checkpoint rule: finish a phase, run `npm run build` + smoke test, confirm with 
 - [x] Smoke-tested: all 6 pages HTTP 200, all 8 routes return data.
 - [ ] Patient card expansion on dashboard doesn't yet call `/api/brief` — the brief is embedded in the Patient object. Revisit when Supabase is live and briefs become GLM-generated. *(Deferred to Phase 6.)*
 
-## Phase 3 — Supabase schema files (no Supabase URL yet) ← NEXT
-- [ ] Create `supabase/migrations/0001_init.sql` with schema from PRD §10 (patients, visits, followups, corrections).
-- [ ] Create `supabase/seed.sql` — minimal seed drawn from `lib/data.ts` shape (5 patients + 5 followups to start; Yu Han expands to 150 later).
-- [ ] Create `lib/supabase.ts` with browser + server-side clients, only initialised when env vars present.
-- [ ] Document in `supabase/README.md`: how to create project, paste URL/keys, run migration + seed.
-- [ ] No deploy yet — files only, committed.
+## Phase 3 — Supabase schema files (no Supabase URL yet) ✅ DONE
+- [x] Create `supabase/migrations/0001_init.sql` with schema from PRD §10 (patients, visits, followups, corrections). Added extras not in PRD: `owner_phone` on patients, `recommended_action` + `telegram_chat_id` on followups, `followup_id` + `approved` on corrections (to match `CorrectionRequest` in `lib/api-types.ts`). Indexes + `replica identity full` on followups.
+- [x] Create `supabase/seed.sql` — seed expanded from 5→9 patients (plus 9 visits + 5 followups) because `lib/data.ts` follow-ups reference 4 patients not on the dashboard (Coco/Biscuit/Pepper/Tofu). Truncates on re-run.
+- [x] Create `lib/supabase.ts` with browser + server-side clients, only initialised when env vars present.
+- [x] Document in `supabase/README.md`: create project → copy env vars → run migration + seed → enable Realtime on `followups`.
+- [x] No deploy yet — files only, committed.
+- [x] Installed `@supabase/supabase-js`.
 
 ---
 
 ## ⛔ Everything below needs the Supabase + Z.AI keys.
 
-## Phase 4 — Supabase live (needs Supabase keys)
+## Phase 4 — Supabase live (needs Supabase keys) ← NEXT
 - [ ] Paste env vars into `.env.local`.
 - [ ] Run migration + seed against the Supabase project.
 - [ ] Flip `MOCK_MODE` off for `/api/patients`, `/api/followups`, `/api/brief` (read paths first). Routes read from Supabase; fall back to mock if error.
