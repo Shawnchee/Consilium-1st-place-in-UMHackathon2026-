@@ -77,14 +77,3 @@ npm run start   # serve production build
 npm run lint    # eslint
 ```
 
----
-
-## Team
-
-| Person | Role |
-|---|---|
-| Brandon | AI Engineer — GLM integration, prompts, LangGraph |
-| Zi Qian | Software Engineer — Next.js, API routes, Supabase, Telegram, deploy |
-| Yu Han | Data Analyst — seed data, validation scenarios |
-| Shawn | Frontend + PM — UI, escalation modal, demo |
-| Harrison | Domain + QA — billing matrix, clinical QA |
