@@ -1,6 +1,90 @@
-hi my name is harrison and i am a student at the university of malaya . I am gay
-i love men
-Yu han X kaihan
+# Consilium
 
-![Facebook Image](https://scontent.fkul16-4.fna.fbcdn.net/v/t39.30808-6/514502097_24191815583782552_465743094723111022_n.jpg?_nc_cat=107&ccb=1-7&_nc_sid=7b2446&_nc_eui2=AeHC1Ipu3fZKzMRkep9_6N24as6C9GzcIq9qzoL0bNwir14l9Ox_A4zeNmxzT18LsOCZLJ6rQhILbgm29KKOuQgg&_nc_ohc=Wc-3n-6s3lcQ7kNvwGgvCRT&_nc_oc=AdppEdIWKoAiMQ-nZlq_eBs6vTY3iLxbvgB1q0NfAH4XtLSX2GxDEDo1YLJj98bP0lQ&_nc_zt=23&_nc_ht=scontent.fkul16-4.fna&_nc_gid=yRxsoqz5Pp7PN-qBi8-rLQ&_nc_ss=7a3a8&oh=00_Af14kWnHcm1sG7xkhFjjgN2EMO3-f-HSeja3BwdmBb9HvQ&oe=69EAD5AE)
-![alt text](image.png)
+**AI Decision Copilot for Veterinary Clinics** — built for UMHackathon 2026.
+
+> *Latin: medical council / advice.* The AI that thinks before the consult, acts after it.
+
+Consilium gives solo vet clinics an AI copilot that briefs the doctor before every consult, captures and structures clinical notes during it, and autonomously follows up with owners after — escalating only the cases that genuinely need the doctor's eyes.
+
+See [`PRD.md`](./PRD.md) for the full product spec and [`TODO.md`](./TODO.md) for the phased build plan.
+
+---
+
+## Stack
+
+| Layer | Tool |
+|---|---|
+| App | Next.js 16 (App Router) + React 19 |
+| Styling | Tailwind CSS v4 |
+| Motion / 3D | motion, three.js (r184) |
+| AI | Z.AI GLM (mandatory) |
+| Agent framework | LangGraph (Python sidecar) |
+| Database | Supabase (Postgres + Realtime) |
+| Bot | grammY (Telegram) inside Next.js API routes |
+| Deploy | Vercel |
+
+---
+
+## Getting started
+
+```bash
+npm install
+cp .env.local.example .env.local   # fill in keys as you get them
+npm run dev                        # http://localhost:3000
+```
+
+The app boots in **mock mode** when Z.AI / Supabase keys are missing — every page renders from `lib/data.ts` and no network calls are made. Add keys later to enable the live integrations phase by phase (see `TODO.md`).
+
+### Environment variables
+
+All keys are documented in `.env.local.example`. The three that flip the app out of mock mode:
+
+- `ZAI_API_KEY` — Z.AI GLM console
+- `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase project settings
+- `TELEGRAM_BOT_TOKEN` — @BotFather (only needed for Phase 8+)
+
+---
+
+## Project layout
+
+```
+app/
+  (app)/                # authed shell: dashboard, consult, follow-ups, analytics, passport
+  api/                  # server routes (added in Phase 1)
+  layout.tsx, page.tsx  # marketing landing
+components/
+  app-shell/            # store, header, page header, escalation modal, toast
+  react-bits/           # animation primitives
+  dogs.tsx              # three.js hero/companion
+  landing-page.tsx
+lib/
+  data.ts               # mock data (single source of truth until Supabase is wired)
+  types.ts              # domain types
+  tokens.ts             # design tokens
+  env.ts                # typed env reader + mock-mode helpers
+supabase/               # migrations + seed (Phase 3)
+langgraph/              # triage graph (Phase 7)
+```
+
+---
+
+## Scripts
+
+```bash
+npm run dev     # dev server
+npm run build   # production build (type-checks + compiles)
+npm run start   # serve production build
+npm run lint    # eslint
+```
+
+---
+
+## Team
+
+| Person | Role |
+|---|---|
+| Brandon | AI Engineer — GLM integration, prompts, LangGraph |
+| Zi Qian | Software Engineer — Next.js, API routes, Supabase, Telegram, deploy |
+| Yu Han | Data Analyst — seed data, validation scenarios |
+| Shawn | Frontend + PM — UI, escalation modal, demo |
+| Harrison | Domain + QA — billing matrix, clinical QA |
