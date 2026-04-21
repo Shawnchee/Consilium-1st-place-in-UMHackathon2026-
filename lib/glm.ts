@@ -46,6 +46,23 @@ const PROMPTS: Record<GLMFeature, string> = {
   triage: TRIAGE_PROMPT,
 };
 
+/**
+ * Per-feature latency envelopes. Tuned to feel like real LLM work:
+ *  - brief: short summary, fast
+ *  - consult: heavy extraction, substantial wait so the "thinking" animation lands
+ *  - triage: one decision, medium
+ */
+const LATENCY_MS: Record<GLMFeature, [number, number]> = {
+  brief: [500, 900],
+  consult: [1200, 2200],
+  triage: [600, 1000],
+};
+
+function pickLatency(feature: GLMFeature): number {
+  const [lo, hi] = LATENCY_MS[feature];
+  return lo + Math.floor(Math.random() * (hi - lo));
+}
+
 export async function callGLM<T = unknown>(
   params: CallGLMParams,
 ): Promise<CallGLMResult<T>> {
@@ -65,7 +82,7 @@ export async function callGLM<T = unknown>(
     );
   }
 
-  const latencyMs = 600 + Math.floor(Math.random() * 800); // 600–1400 ms
+  const latencyMs = pickLatency(params.feature);
   await new Promise((r) => setTimeout(r, latencyMs));
 
   let data: unknown;

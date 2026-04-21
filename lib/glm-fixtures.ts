@@ -8,7 +8,7 @@
  * inline classifier in app/api/triage/route.ts.
  */
 
-import { GLM_CONSULT_OUTPUT } from "./data";
+import { GLM_CONSULT_OUTPUT, PATIENTS } from "./data";
 import type { Brief, ConsultOutput, FollowUpLevel } from "./types";
 import type { Differential } from "./api-types";
 import type { CallGLMParams } from "./glm";
@@ -116,11 +116,15 @@ export function consultFixture(_params: CallGLMParams): ConsultOutput {
   return GLM_CONSULT_OUTPUT;
 }
 
+const BRIEF_BY_NAME = new Map(PATIENTS.map((p) => [p.name, p.brief]));
+
 export function briefFixture(params: CallGLMParams): Brief {
   const patientName =
-    (params.context?.patientName as string | undefined) ?? "the patient";
+    (params.context?.patientName as string | undefined) ?? "";
+  const canned = BRIEF_BY_NAME.get(patientName);
+  if (canned) return canned;
   return {
-    lastVisit: `Most recent visit reviewed for ${patientName}`,
+    lastVisit: `Most recent visit reviewed for ${patientName || "the patient"}`,
     chronic: "None on record",
     compliance: "Owner responsive to follow-ups",
     pending: "Annual vaccination status — confirm",

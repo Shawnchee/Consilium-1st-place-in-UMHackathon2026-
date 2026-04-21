@@ -51,12 +51,12 @@ Goal: every user-visible surface behaves as if GLM + Telegram were live. Real wi
 - [x] `scripts/test-glm.ts` — smoke script. All 3 triage branches fire; consult flags 2 billing items; few-shot hook logs. `npm run build` green.
 - [~] Installed `tsx` as devDep to run the smoke script (small, isolated — acceptable lockfile churn).
 
-## Phase M6 — Route AI features through mock GLM
-- [ ] `/api/brief` → `callGLM({feature: "brief", ...})` → 5-line brief shape. Supabase still provides patient row; brief body comes from fixture.
-- [ ] `/api/consult` → `callGLM({feature: "consult", ...})`. Also writes a visit row to Supabase so the consult persists across refresh — sells the demo.
-- [ ] `/api/triage` → `callGLM({feature: "triage", ...})`. Keyword-match inside the fixture picks red-flag vs monitor vs clear.
-- [ ] Delete the inline keyword classifier in `/api/triage` once the fixture produces the same three branches.
-- [ ] Extend the current 600 ms `setTimeout` in `app/api/consult/route.ts` to ~1.2–2 s so the GLM "thinking" feels substantial during the demo recording.
+## Phase M6 — Route AI features through mock GLM ✅ DONE
+- [x] `/api/brief` → `callGLM({feature: "brief", ...})`. Supabase resolves the patient row; `briefFixture` looks up the hand-authored brief from `lib/data.ts` by name so dashboard output stays identical.
+- [x] `/api/consult` → `callGLM({feature: "consult", ...})` + persists a `visits` row (patient_id, raw_notes, soap_note as formatted text, prescription/billing/todos as JSONB). `visitId` returned to client is a real Supabase UUID when DB write succeeds, mock fallback otherwise.
+- [x] `/api/triage` → `callGLM({feature: "triage", ...})`. Inline keyword classifier deleted — fixture reproduces all 3 branches.
+- [x] Per-feature latency envelopes in `lib/glm.ts` (brief 500–900, consult 1200–2200, triage 600–1000). Consult "thinking" now lands at ~1.5s which reads as substantial in the UI.
+- [x] Curl-verified end-to-end on live Supabase: brief returns named brief (911 ms), consult persists real visit UUID + 2 flagged billing rows (2.1 s), triage all 3 branches (~1 s each).
 
 ## Phase M7 — UX polish (loaders, reveal, toasts)
 - [ ] Skeleton loaders on dashboard patient cards, KPI row, and analytics charts. Wired to `loading` from `useStore()`. Analytics page currently has **no loading state** — add one around `api.getAnalytics()` call.
