@@ -80,6 +80,17 @@ Dev loop = polling, no public URL. Webhook path written but dormant until M12. B
 - [x] Smoke: `npx tsx scripts/start-bot.ts` authenticated as `@consilium_vet_bot` (id 8740499349). `npm run build` green with the new `/api/telegram/webhook` route registered.
 - [ ] Demo prep (do-once): run `scripts/send-test-followup.ts` with your personal chat id + "Milo" so a followup row is pre-linked for the rehearsal.
 
+## Phase M10a — Mock tool calling (agentic triage) ✅ DONE
+Multi-turn triage: on ambiguous first-turn signals the agent calls a tool (request_photo / request_temperature / request_appetite_timeline) instead of deciding, then commits to a decision on turn 2 with the clarifying reply in context. Console output is colour-coded with reasoning + differentials so judges can watch the agent think during the demo.
+- [x] Migration `0003_followups_conversation.sql`: `conversation jsonb[]` + `tool_call_count int` on followups.
+- [x] `lib/types.ts` — `ConversationTurn` union (`owner | bot_tool | bot_decision`) + `ToolName`. Extended `FollowUp` with `conversation` + `toolCallCount`. Unified `Differential` across api-types + types.
+- [x] `lib/glm-fixtures.ts` — `TriageFixtureOutput = TriageDecision | TriageToolCall`. Strong escalate/clear keywords go terminal on turn 1; ambiguous signals fire tool_call with hand-crafted reasoning per tool (5 tools from PRD §7).
+- [x] `lib/telegram-handler.ts` — reads prior conversation + tool_call_count; on tool_call branch appends `bot_tool` turn, increments counter, status stays `pending`; on decision branch appends `bot_decision` turn, updates status + differentials + confidence. Emits boxed ANSI logs: owner inbound → agent reasoning → tool call OR decision → outbound.
+- [x] `components/app-shell/escalation-modal.tsx` — renders full conversation thread: owner bubbles, purple tool-call chips showing reasoning + prompt, bordered decision bubble. Falls back to legacy single-quote render when no conversation stored.
+- [x] `app/api/followups/route.ts` — SELECT pulls `conversation` + `tool_call_count` so the dashboard gets them.
+- [x] `app/api/triage/route.ts` — ad-hoc HTTP callers force `toolCallCount: 1` so the route always resolves to a one-shot decision (bot path uses the multi-turn flow directly).
+- [x] Smoke `scripts/test-tool-calling.ts` — seeds followup, runs 2-turn conversation against real DB, asserts tool_call on turn 1 + escalate on turn 2 + 4-turn conversation persisted. Cleans up.
+
 ## Phase M9 — Real Supabase Realtime ✅ DONE
 Scope changed from "fake timed drops" to real Realtime — the Telegram bot writes actual `followups` rows, so we just subscribe to the live stream instead of faking it.
 - [x] Migration `supabase/migrations/0002_realtime_followups.sql`: `alter publication supabase_realtime add table followups;` Applied via Supabase MCP; confirmed via `pg_publication_tables`.

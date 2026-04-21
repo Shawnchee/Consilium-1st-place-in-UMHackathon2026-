@@ -12,6 +12,7 @@ import type {
   MetricCardData,
   DiagnosisRow,
   CorrectionRow,
+  Differential,
 } from "./types";
 
 // ─── /api/patients ──────────────────────────────────────────────────────────
@@ -50,11 +51,6 @@ export interface TriageRequest {
   followupId: string;
   message: string;
   chatId?: string | number;
-}
-export interface Differential {
-  cause: string;
-  probability: number; // 0..1
-  tone: "red" | "green" | "amber";
 }
 export interface TriageResponse {
   decision: FollowUpLevel; // "escalate" | "monitor" | "clear"

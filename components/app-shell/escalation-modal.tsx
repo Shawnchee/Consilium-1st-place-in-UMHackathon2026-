@@ -10,8 +10,246 @@ import {
   RADIUS,
   SHADOW_CARD,
 } from "@/lib/tokens";
-import type { Differential } from "@/lib/types";
+import type { ConversationTurn, Differential, ToolName } from "@/lib/types";
 import { useStore } from "./store";
+
+const TOOL_LABEL: Record<ToolName, string> = {
+  request_photo: "Requested photo",
+  request_temperature: "Requested temperature",
+  request_appetite_timeline: "Requested appetite timeline",
+  request_medication_compliance: "Checked medication compliance",
+  schedule_doctor_callback: "Scheduled doctor callback",
+};
+
+function fmtTs(ts: string): string {
+  try {
+    return new Date(ts).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+function OwnerBubble({ turn }: { turn: Extract<ConversationTurn, { role: "owner" }> }) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 1.2,
+          textTransform: "uppercase",
+          color: C.muted,
+          paddingTop: 14,
+          minWidth: 56,
+        }}
+      >
+        Owner
+      </div>
+      <blockquote
+        style={{
+          margin: 0,
+          padding: "12px 16px",
+          borderRadius: RADIUS.md,
+          background: "#FBFAF7",
+          borderLeft: `3px solid ${C.border}`,
+          fontFamily: FONT_SERIF,
+          fontStyle: "italic",
+          fontSize: 15,
+          lineHeight: 1.55,
+          color: C.ink,
+          flex: 1,
+        }}
+      >
+        &ldquo;{turn.text}&rdquo;
+        <div
+          style={{
+            fontFamily: "inherit",
+            fontSize: 10.5,
+            fontStyle: "normal",
+            color: C.hint,
+            marginTop: 6,
+            letterSpacing: 0.3,
+          }}
+        >
+          {fmtTs(turn.ts)} · via Telegram
+        </div>
+      </blockquote>
+    </div>
+  );
+}
+
+function ToolChip({ turn }: { turn: Extract<ConversationTurn, { role: "bot_tool" }> }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        animation: "slideIn 260ms ease both",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 1.2,
+          textTransform: "uppercase",
+          color: C.brand,
+          paddingTop: 14,
+          minWidth: 56,
+        }}
+      >
+        Agent
+      </div>
+      <div
+        style={{
+          flex: 1,
+          padding: "12px 16px",
+          borderRadius: RADIUS.md,
+          background: C.brandLight,
+          border: `1px solid ${C.brandBorder}`,
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontFamily: FONT_MONO,
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: 0.3,
+            color: C.brandDark,
+            textTransform: "uppercase",
+            marginBottom: 6,
+          }}
+        >
+          <span>🛠</span>
+          <span>tool_call · {TOOL_LABEL[turn.tool]}</span>
+        </div>
+        <div
+          style={{
+            fontSize: 12.5,
+            color: C.ink,
+            lineHeight: 1.5,
+            marginBottom: 8,
+            fontStyle: "italic",
+          }}
+        >
+          {turn.reasoning}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: C.text,
+            lineHeight: 1.5,
+            padding: "8px 10px",
+            background: "#FFFFFF",
+            border: `1px solid ${C.brandBorder}`,
+            borderRadius: RADIUS.sm,
+            fontFamily: FONT_SERIF,
+          }}
+        >
+          {turn.ownerPrompt}
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            color: C.hint,
+            marginTop: 6,
+            letterSpacing: 0.3,
+            fontFamily: FONT_MONO,
+          }}
+        >
+          sent {fmtTs(turn.ts)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DecisionBubble({
+  turn,
+}: {
+  turn: Extract<ConversationTurn, { role: "bot_decision" }>;
+}) {
+  const tone =
+    turn.decision === "escalate"
+      ? C.red
+      : turn.decision === "monitor"
+        ? C.amber
+        : C.green;
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 1.2,
+          textTransform: "uppercase",
+          color: tone,
+          paddingTop: 14,
+          minWidth: 56,
+        }}
+      >
+        Agent
+      </div>
+      <div
+        style={{
+          flex: 1,
+          padding: "12px 16px",
+          borderRadius: RADIUS.md,
+          background: "#FFFFFF",
+          border: `1px solid ${C.borderSoft}`,
+          borderLeft: `3px solid ${tone}`,
+        }}
+      >
+        <div
+          style={{
+            fontFamily: FONT_MONO,
+            fontSize: 10.5,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: 1.2,
+            color: tone,
+            marginBottom: 6,
+          }}
+        >
+          decision · {turn.decision}  ·  confidence {Math.round(turn.confidence * 100)}%
+        </div>
+        <div style={{ fontSize: 13.5, color: C.text, lineHeight: 1.5 }}>
+          {turn.reply}
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            color: C.hint,
+            marginTop: 6,
+            letterSpacing: 0.3,
+            fontFamily: FONT_MONO,
+          }}
+        >
+          sent {fmtTs(turn.ts)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConversationThread({ turns }: { turns: ConversationTurn[] }) {
+  return (
+    <div style={{ display: "grid", gap: 10, marginBottom: 24 }}>
+      {turns.map((t, i) => {
+        if (t.role === "owner") return <OwnerBubble key={i} turn={t} />;
+        if (t.role === "bot_tool") return <ToolChip key={i} turn={t} />;
+        return <DecisionBubble key={i} turn={t} />;
+      })}
+    </div>
+  );
+}
 
 function DifferentialBar({
   d,
@@ -183,58 +421,52 @@ export default function EscalationModal() {
         </div>
 
         <div style={{ padding: "22px 28px" }}>
-          {/* Owner message — quoted, italic, per PRD §F3 */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 10, alignItems: "baseline" }}>
-            <div
-              style={{
-                fontSize: 10.5,
-                fontWeight: 700,
-                letterSpacing: 1.2,
-                textTransform: "uppercase",
-                color: C.muted,
-              }}
-            >
-              Owner message
-            </div>
-            <div
-              style={{
-                fontFamily: FONT_MONO,
-                fontSize: 11,
-                color: C.hint,
-              }}
-            >
-              {f.tsLabel} · via Telegram
-            </div>
-          </div>
-          <blockquote
+          {/* Conversation thread — owner bubbles + tool-call chips + decision */}
+          <div
             style={{
-              margin: 0,
-              padding: "14px 18px",
-              borderRadius: RADIUS.md,
-              background: "#FBFAF7",
-              borderLeft: `3px solid ${C.border}`,
-              fontFamily: FONT_SERIF,
-              fontStyle: "italic",
-              fontSize: 16,
-              lineHeight: 1.5,
-              color: C.ink,
-              marginBottom: 24,
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
+              color: C.muted,
+              marginBottom: 12,
             }}
           >
-            &ldquo;{f.ownerMessage}&rdquo;
-            <div
+            Triage conversation
+          </div>
+          {f.conversation && f.conversation.length > 0 ? (
+            <ConversationThread turns={f.conversation} />
+          ) : (
+            <blockquote
               style={{
-                fontFamily: "inherit",
-                fontSize: 11,
-                fontStyle: "normal",
-                color: C.muted,
-                marginTop: 8,
-                letterSpacing: 0.2,
+                margin: 0,
+                padding: "14px 18px",
+                borderRadius: RADIUS.md,
+                background: "#FBFAF7",
+                borderLeft: `3px solid ${C.border}`,
+                fontFamily: FONT_SERIF,
+                fontStyle: "italic",
+                fontSize: 16,
+                lineHeight: 1.5,
+                color: C.ink,
+                marginBottom: 24,
               }}
             >
-              — {f.owner}
-            </div>
-          </blockquote>
+              &ldquo;{f.ownerMessage}&rdquo;
+              <div
+                style={{
+                  fontFamily: "inherit",
+                  fontSize: 11,
+                  fontStyle: "normal",
+                  color: C.muted,
+                  marginTop: 8,
+                  letterSpacing: 0.2,
+                }}
+              >
+                — {f.owner}
+              </div>
+            </blockquote>
+          )}
 
           {/* Differentials */}
           <div

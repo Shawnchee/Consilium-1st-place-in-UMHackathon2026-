@@ -8,7 +8,14 @@
  * dashboard keeps its polished look.
  */
 import { PATIENTS } from "./data";
-import type { Brief, FollowUp, FollowUpLevel, Patient, TagColor } from "./types";
+import type {
+  Brief,
+  ConversationTurn,
+  FollowUp,
+  FollowUpLevel,
+  Patient,
+  TagColor,
+} from "./types";
 
 export type PatientRow = {
   id: string;
@@ -70,6 +77,8 @@ export type FollowupRow = {
   recommended_action: string | null;
   draft_response: string | null;
   differentials: unknown;
+  conversation: unknown;
+  tool_call_count: number | null;
   sent_at: string | null;
   created_at: string;
   visits: {
@@ -128,6 +137,20 @@ function procedureFromNotes(notes: string | null): string {
   return head.length > 60 ? head.slice(0, 57) + "…" : head;
 }
 
+const VALID_ROLES = new Set(["owner", "bot_tool", "bot_decision"]);
+
+function parseConversation(raw: unknown): ConversationTurn[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (t): t is ConversationTurn =>
+      t !== null &&
+      typeof t === "object" &&
+      "role" in t &&
+      typeof (t as { role: unknown }).role === "string" &&
+      VALID_ROLES.has((t as { role: string }).role),
+  );
+}
+
 export function rowToFollowUp(r: FollowupRow): FollowUp {
   const visit = r.visits;
   const patient = visit?.patients;
@@ -143,5 +166,7 @@ export function rowToFollowUp(r: FollowupRow): FollowUp {
     recommendation: r.recommended_action ?? "",
     draft: r.draft_response ?? undefined,
     tsLabel: undefined,
+    conversation: parseConversation(r.conversation),
+    toolCallCount: r.tool_call_count ?? 0,
   };
 }

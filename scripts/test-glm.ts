@@ -55,13 +55,33 @@ async function main() {
 
   for (const c of triageCases) {
     console.log(`\n=== triage: ${c.label} ===`);
+    // Force toolCallCount=1 so the fixture gives a decision (skip the
+    // multi-turn info-gathering branch — that's covered in the bot smoke).
     const t = await callGLM<TriageFixtureOutput>({
       feature: "triage",
       user: c.msg,
+      context: { toolCallCount: 1 },
     });
     console.log(`source=${t.source}  latency=${t.latencyMs}ms`);
-    console.log(`  decision=${t.data.decision}  confidence=${t.data.confidence}`);
-    console.log(`  action: ${t.data.recommendedAction}`);
+    if (t.data.kind === "decision") {
+      console.log(`  decision=${t.data.decision}  confidence=${t.data.confidence}`);
+      console.log(`  action: ${t.data.recommendedAction}`);
+    } else {
+      console.log(`  tool_call=${t.data.tool}  reason=${t.data.reasoning}`);
+    }
+  }
+
+  console.log("\n=== triage: tool-call (ambiguous first turn) ===");
+  const tool = await callGLM<TriageFixtureOutput>({
+    feature: "triage",
+    user: "She has some blood on her bed",
+    context: { toolCallCount: 0, patientName: "Milo" },
+  });
+  if (tool.data.kind === "tool_call") {
+    console.log(`  tool=${tool.data.tool}`);
+    console.log(`  prompt: ${tool.data.ownerPrompt}`);
+  } else {
+    console.log(`  unexpected terminal decision: ${tool.data.decision}`);
   }
 
   console.log("\n=== few-shot hook ===");
