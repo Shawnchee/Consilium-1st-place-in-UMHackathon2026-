@@ -2,11 +2,11 @@
 
 Current state: Next.js 16 + React 19 + Tailwind v4 frontend is scaffolded. Routes exist for dashboard, consult, follow-ups, analytics, passport. Mock data lives in `lib/data.ts`. Store is a React context (`components/app-shell/store.tsx`). API routes live in `app/api/*` and return Supabase-backed data when live, mock fallback otherwise.
 
-Blocked on credentials: **Z.AI GLM API key** + **Telegram bot token** may not land before prelim submission. Plan is **mock-first**: build a complete, demo-ready flow (loaders, fake latency, canned GLM output, simulated Telegram, fake realtime drops) that records cleanly for the hackathon video. Real-integration work is tracked in the Backlog section below, grouped by original phase so a future agent can swap modules 1:1 when keys arrive. Supabase keys are already live.
+Blocked on credentials: **Z.AI GLM API key** may not land before prelim submission. Plan is **mock-GLM-first**: canned GLM output with real latency + streamed reveal. Telegram + Supabase run live — demo uses a real Telegram bot talking to the mock GLM, which is visually indistinguishable from the full product. Real-integration work for GLM is tracked in the Backlog section below.
 
 Checkpoint rule: finish a phase, run `npm run build` + smoke test, confirm with user before starting the next phase.
 
-**Swappability contract**: `lib/glm.ts` and `lib/telegram.ts` ship as mock modules with the exact function signatures the real implementations will have. Swapping = replace the module body, not rewire callers. Route handlers never branch on `isMockMode()` — they call the module, the module decides.
+**Swappability contract**: `lib/glm.ts` ships as a mock module with the exact function signature the real Z.AI client will have. Swapping = replace the module body, not rewire callers. Route handlers never branch on `isMockMode()` — they call the module, the module decides. `lib/telegram.ts` is real from M8 onwards — no mock layer needed since we have the bot token.
 
 ---
 
@@ -69,11 +69,15 @@ Goal: every user-visible surface behaves as if GLM + Telegram were live. Real wi
 - [~] Triage-decision toast deferred to Phase M8 — no UI today receives triage output (the simulated chat there will fire one on each bot turn).
 - [x] `npm run build` green; all 5 pages HTTP 200. Visual feel (pulse cadence, caret blink, stream rate) needs in-browser review.
 
-## Phase M8 — Mock Telegram (in-app simulated conversation)
-- [ ] `lib/telegram.ts` — export `sendTelegramMessage(chatId: string, text: string): Promise<{ok: true}>` with the **real-client signature**. Mock body pushes to an in-memory `MOCK_TELEGRAM_LOG` keyed by `chatId` and emits a custom event on a global bus so UI can subscribe.
-- [ ] `app/api/telegram/webhook/route.ts` — stub the real webhook handler shape (accepts `{chat_id, text}`). In mock, called by the simulated-owner UI below; in real, Telegram hits it. Forwards to `/api/triage`.
-- [ ] **Fake conversation thread in `components/app-shell/escalation-modal.tsx`** — replace the single-owner-message quote block with a scrollable thread showing owner ↔ bot back-and-forth, pulled from `MOCK_TELEGRAM_LOG`. Timestamps per bubble. Owner can type a reply → POSTs to `/api/telegram/webhook` → triage decides → bot response appended.
-- [ ] Seed 2 canned conversations (one escalates, one resolves) so the demo video has something to land on without typing.
+## Phase M8 — Real Telegram bot (polling) ← `TELEGRAM_BOT_TOKEN` live
+Dev loop = polling, no public URL needed. Webhook path stays stubbed for M12 Vercel deploy. The bot talks to the mock GLM via `/api/triage`, so owner messages get triaged and replied to with zero Z.AI dependency.
+- [ ] Install `grammy` as a runtime dep.
+- [ ] `lib/telegram.ts` — real grammY client. Exports `sendTelegramMessage(chatId, text)` for use from API routes, and `getBot()` for the polling process. No mock in-memory log.
+- [ ] `scripts/start-bot.ts` — long-running polling process. Registers `bot.on("message:text")` → resolves `followup_id` from `chat_id` (see mapping below) → POSTs owner message to `/api/triage` → replies via `sendTelegramMessage` with the decision's `ownerReplyDraft`. Run with `npx tsx scripts/start-bot.ts` in a second terminal alongside `npm run dev`.
+- [ ] Chat↔followup mapping: seed your own Telegram chat id into one or two `followups.telegram_chat_id` rows (get your chat id by messaging the bot once and inspecting the update). Resolver = `SELECT * FROM followups WHERE telegram_chat_id = $1 ORDER BY created_at DESC LIMIT 1`.
+- [ ] `scripts/send-test-followup.ts` — seeds a new followup row linked to your chat id and sends the opening 24h message. Rehearsal helper.
+- [ ] `app/api/telegram/webhook/route.ts` — keep the handler written (same logic as the polling `message:text` hook) but leave `setWebhook` uncalled. Used only when Phase 8-real flips to prod.
+- [ ] Smoke: start bot → message from phone → owner reply arrives within 2 s; triage decision visible in the Next.js dev console log.
 
 ## Phase M9 — Fake realtime (timed escalation drops)
 - [ ] `components/app-shell/demo-realtime.tsx` — when `NEXT_PUBLIC_DEMO_MODE === "true"` OR a hidden dev button is pressed, schedule 2 new escalation cards into `useStore().followups` at fixed delays (8 s, 22 s after mount). Uses the same animation path real Supabase Realtime will use. Exported function named `pushRealtimeFollowup(row)` so Phase 9-real drops a `postgres_changes` handler calling the same function.
@@ -124,11 +128,11 @@ Grouped by original phase numbers from the pre-mock plan. Each entry: *what the 
 - **Files:** `langgraph/triage_graph.py`, `langgraph/tools.py`, `langgraph/checkpointer.py`, `app/api/triage/route.ts` (replace GLM call with fetch to sidecar).
 - **Deps:** GLM key, `SUPABASE_DB_URL`, sidecar deploy.
 
-### Phase 8-real — Telegram bot
-- **Mock does:** `lib/telegram.ts` writes to in-memory log; `escalation-modal.tsx` renders simulated chat. Webhook route accepts the real Telegram update shape.
-- **Swap:** replace `lib/telegram.ts` body with grammY client calling Bot API. Webhook stays; add signature-verification via `TELEGRAM_WEBHOOK_SECRET`. Gate simulated-chat bubbles behind `DEMO_MODE` or remove.
-- **Files:** `lib/telegram.ts`, `app/api/telegram/webhook/route.ts`, `components/app-shell/escalation-modal.tsx`, `scripts/send-test-followup.ts`, `scripts/set-webhook.ts`.
-- **Deps:** `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, deployed URL.
+### Phase 8-real — Telegram prod deploy
+- **Mock does:** polling bot running locally (`scripts/start-bot.ts`) using the real Telegram API. Already real.
+- **Swap:** flip from polling to webhook so Telegram pushes updates directly to the Vercel deploy. Add signature verification via `TELEGRAM_WEBHOOK_SECRET`. Call `setWebhook` pointing at the prod URL.
+- **Files:** `app/api/telegram/webhook/route.ts` (already written, just needs live routing + signature check), `scripts/set-webhook.ts` (new, one-shot registration), `lib/telegram.ts` (no change).
+- **Deps:** deployed URL + `TELEGRAM_WEBHOOK_SECRET` set on Vercel. Stop the local polling process once webhook is registered (only one receiver allowed per bot).
 
 ### Phase 9-real — Supabase Realtime
 - **Mock does:** `pushRealtimeFollowup(row)` fires on a timer in `components/app-shell/demo-realtime.tsx`.
@@ -157,6 +161,7 @@ Grouped by original phase numbers from the pre-mock plan. Each entry: *what the 
 ## Open questions
 - Where does the Python LangGraph sidecar live in prod? (Fly.io vs Render vs Vercel Python func.)
 - Single clinic hardcoded for prelim — which name/phone on passports + reply sign-offs?
-- Mock Telegram pane: add an "auto-play canned conversation" button for the demo video, or keep it fully interactive and rely on rehearsal?
-- Judge's demo link: bake `DEMO_MODE=true` into the preview, or use a secret query param (`?demo=1`) so a normal URL stays clean?
-- If GLM key arrives mid-weekend: swap during prelim window, or ship mock and swap only for finals?
+- Demo Telegram account: use Shawn's personal account as the "owner", or set up a second test account? (Judges will see the username in the thread.)
+- For the recorded demo video: pre-stage a few Telegram messages so the reply round-trip lands crisp, or take the risk and type live?
+- If GLM key arrives mid-weekend: swap during prelim window, or ship mock GLM + real Telegram and swap only for finals?
+- Rotate the bot token after prelim (`@BotFather` → `/revoke`) — it's been shared in Claude chat history.
