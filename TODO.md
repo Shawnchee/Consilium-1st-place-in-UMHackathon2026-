@@ -105,11 +105,8 @@ Scope changed from "fake timed drops" to real Realtime — the Telegram bot writ
 - [ ] `lib/glm.ts` triage fixture accepts a `corrections` context param and console-logs "would-inject" — stub for the real few-shot wiring.
 - [ ] `[ ✓ Correct ] [ ✗ Wrong — reason ]` toggle surfaces on every escalation approve/edit (in `escalation-modal.tsx`).
 
-## Phase M11 — Pet passport public page (static OK)
-- [ ] `app/(public)/passport/[id]/page.tsx` — public route outside the `(app)` shell. Reads patient + latest visit from Supabase.
-- [ ] Replace the procedural QR placeholder in `app/(app)/passport/page.tsx` with a real QR via `qrcode` npm (install this phase only).
-- [ ] Static layout, print-friendly. "Download PDF" deferred to demo day.
-- [ ] Link/QR from the `(app)` passport page to the `(public)` one.
+## Phase M11 — Pet passport public page ⏸ DEFERRED — see Backlog below
+Not in prelim scope. Full spec moved to `### Phase 11-real` in the Backlog section so it can be picked up for finals (or skipped if time tight).
 
 ## Phase M12 — Demo rehearsal + Vercel deploy
 - [ ] Yu Han's expanded seed landed in `supabase/seed.sql` (target ~30 patients for prelim, full 150 for finals).
@@ -158,10 +155,26 @@ No further work. Subscription already live; real Telegram updates flow through t
 - **Files:** `lib/glm.ts`, `lib/prompts.ts` (add few-shot slot).
 - **Deps:** GLM live.
 
-### Phase 11-real — Passport extras
-- **Mock does:** public page reads from Supabase, renders real QR. Nothing required to swap.
-- **Swap:** add "Download PDF" (react-pdf or print-to-PDF) if time allows.
-- **Files:** `app/(public)/passport/[id]/page.tsx`.
+### Phase 11-real — Pet passport (generation + scan → public history page)
+Nothing built yet. `app/(app)/passport/page.tsx` is a placeholder with a procedural QR and hardcoded content. Full scope:
+- **Internal page** (`app/(app)/passport/page.tsx`, rewrite) — list patients, click one → real QR (via `qrcode` npm) encoding `https://<app>/passport/<patient-uuid>` + preview of the public page + copy-link / print / regenerate buttons.
+- **Public page** (`app/(public)/passport/[id]/page.tsx`, new) — standalone, no app shell, mobile-first, SSR from Supabase with ISR `revalidate=60`. Sections:
+  - Patient card: name, species, breed, age, sex, microchip, owner *name only* (no phone)
+  - Vaccines block: DHPP / Rabies / Lepto with last-given date + next-due status
+  - Visit timeline: reverse-chronological, date · diagnosis · short notes
+  - Chronic conditions + drug allergies
+  - "Notes for next vet" — one-paragraph handover summary
+  - Clinic footer: name, address, issued date
+  - Print CSS so owners can print for travel
+- **Data**: visits table has what we need for the timeline. No vaccinations table — either add `supabase/migrations/0004_vaccinations.sql` (preferred) or overlay from `lib/data.ts` the way briefs do.
+- **Security note**: UUIDs aren't guessable enough to matter but aren't secrets either. Keep PII off the public page (no phone, no address).
+- **Demo scan logistics**:
+  - **Option A** (real scan on camera): requires Vercel deploy first — use live URL in the QR. Best for the video. +30 min for deploy.
+  - **Option B** (fake on camera): show QR, cut to browser at the URL. Works for video without deploy.
+- **PDF export**: defer to demo day if time allows (react-pdf or client print-to-PDF).
+- **Dep**: `qrcode` (~5 KB).
+- **Files**: `app/(public)/passport/[id]/page.tsx`, `app/(app)/passport/page.tsx`, `lib/data.ts` (vaccine overlay), optional `supabase/migrations/0004_vaccinations.sql`.
+- **Time**: ~90 min for the pages + QR, +30 min if deploying for real scan.
 
 ### Phase 12-real — Validation harness
 - **Mock does:** n/a.
