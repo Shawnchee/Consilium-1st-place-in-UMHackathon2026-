@@ -6,9 +6,12 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { api } from "@/lib/api";
+import { hasSupabase } from "@/lib/env";
+import { getSupabaseBrowser } from "@/lib/supabase";
 import type { FollowUp, MetricCardData, Patient } from "@/lib/types";
 
 interface StoreCtx {
@@ -33,6 +36,13 @@ interface StoreCtx {
   setExpandedPatient: (id: string | null) => void;
 }
 
+/** Minimum shape we read off a Realtime `followups` row payload. */
+type FollowupRowPayload = {
+  id: string;
+  status?: string;
+  owner_message?: string | null;
+};
+
 const Ctx = createContext<StoreCtx | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
@@ -47,29 +57,85 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [escalation, setEscalation] = useState<FollowUp | null>(null);
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [fu, pa, me] = await Promise.all([
-        api.getFollowups(),
-        api.getPatients(),
-        api.getMetrics(),
-      ]);
-      setFollowups(fu.followups);
-      setResolvedCount(fu.resolvedCount);
-      setPatients(pa.patients);
-      setMetrics(me.metrics);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // `silent` skips the loading skeleton flash — used for Realtime-triggered
+  // refreshes where a full skeleton wipe would be jarring.
+  const loadFollowups = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const [fu, pa, me] = await Promise.all([
+          api.getFollowups(),
+          api.getPatients(),
+          api.getMetrics(),
+        ]);
+        setFollowups(fu.followups);
+        setResolvedCount(fu.resolvedCount);
+        setPatients(pa.patients);
+        setMetrics(me.metrics);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "failed to load");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [],
+  );
+
+  const refresh = useCallback(() => loadFollowups(false), [loadFollowups]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadFollowups(false);
+  }, [loadFollowups]);
+
+  /* ─── Supabase Realtime on `followups` ────────────────────────────────
+     One subscription per mount. INSERTs = new followup seeded (bot
+     started a case). UPDATEs = owner replied, triage decided. When the
+     decision flips to `escalate`, flash a toast and refresh silently.
+  ─────────────────────────────────────────────────────────────────────── */
+  const seenEscalationIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!hasSupabase()) return;
+
+    const sb = getSupabaseBrowser();
+    const channel = sb
+      .channel("followups-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "followups" },
+        (payload) => {
+          const row = payload.new as FollowupRowPayload;
+          void loadFollowups(true);
+          if (row.status === "escalate" && !seenEscalationIds.current.has(row.id)) {
+            seenEscalationIds.current.add(row.id);
+            setToast("New escalation opened");
+            setTimeout(() => setToast(null), 3400);
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "followups" },
+        (payload) => {
+          const row = payload.new as FollowupRowPayload;
+          const prev = payload.old as FollowupRowPayload | null;
+          void loadFollowups(true);
+          const becameEscalate =
+            row.status === "escalate" && prev?.status !== "escalate";
+          if (becameEscalate && !seenEscalationIds.current.has(row.id)) {
+            seenEscalationIds.current.add(row.id);
+            setToast("New escalation — check follow-ups");
+            setTimeout(() => setToast(null), 3400);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [loadFollowups]);
 
   const flashToast = useCallback((msg: string) => {
     setToast(msg);

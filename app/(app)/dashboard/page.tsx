@@ -4,6 +4,12 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Dot, Pill } from "@/components/atoms";
 import { useStore } from "@/components/app-shell/store";
+import {
+  SkeletonBrief,
+  SkeletonKpiCard,
+  SkeletonPatientRow,
+} from "@/components/app-shell/skeleton";
+import { ErrorBanner } from "@/components/app-shell/error-banner";
 import { C, FONT_SERIF, FONT_MONO } from "@/lib/tokens";
 import type { MetricCardData, Patient } from "@/lib/types";
 
@@ -217,7 +223,14 @@ function KpiCard({ m, index }: { m: MetricCardData; index: number }) {
   );
 }
 
-function KpiRow({ metrics }: { metrics: MetricCardData[] }) {
+function KpiRow({
+  metrics,
+  loading,
+}: {
+  metrics: MetricCardData[];
+  loading: boolean;
+}) {
+  const showSkeleton = loading && metrics.length === 0;
   return (
     <div
       style={{
@@ -227,9 +240,9 @@ function KpiRow({ metrics }: { metrics: MetricCardData[] }) {
         marginBottom: 32,
       }}
     >
-      {metrics.map((m, i) => (
-        <KpiCard key={m.label} m={m} index={i} />
-      ))}
+      {showSkeleton
+        ? [0, 1, 2, 3].map((i) => <SkeletonKpiCard key={i} index={i} />)
+        : metrics.map((m, i) => <KpiCard key={m.label} m={m} index={i} />)}
     </div>
   );
 }
@@ -279,6 +292,15 @@ function PatientRow({
   index: number;
 }) {
   const [hover, setHover] = useState(false);
+  const [briefReady, setBriefReady] = useState(false);
+  useEffect(() => {
+    if (!expanded) {
+      setBriefReady(false);
+      return;
+    }
+    const t = setTimeout(() => setBriefReady(true), 200);
+    return () => clearTimeout(t);
+  }, [expanded]);
   return (
     <div
       style={{
@@ -417,13 +439,17 @@ function PatientRow({
             </div>
           </div>
 
-          <div style={{ padding: "16px 24px 8px" }}>
-            <BriefLine label="Last visit" value={p.brief.lastVisit} />
-            <BriefLine label="Chronic" value={p.brief.chronic} />
-            <BriefLine label="Compliance" value={p.brief.compliance} />
-            <BriefLine label="Probe today" value={p.brief.probe} />
-            <BriefLine label="Pending" value={p.brief.pending} />
-          </div>
+          {briefReady ? (
+            <div style={{ padding: "16px 24px 8px" }}>
+              <BriefLine label="Last visit" value={p.brief.lastVisit} />
+              <BriefLine label="Chronic" value={p.brief.chronic} />
+              <BriefLine label="Compliance" value={p.brief.compliance} />
+              <BriefLine label="Probe today" value={p.brief.probe} />
+              <BriefLine label="Pending" value={p.brief.pending} />
+            </div>
+          ) : (
+            <SkeletonBrief />
+          )}
 
           <div
             style={{
@@ -728,6 +754,8 @@ export default function DashboardPage() {
     metrics,
     resolvedCount,
     loading,
+    error,
+    refresh,
     expandedPatient,
     setExpandedPatient,
     flashToast,
@@ -736,25 +764,13 @@ export default function DashboardPage() {
   const escalations = followups.filter((f) => f.level === "escalate");
   const monitors = followups.filter((f) => f.level === "monitor");
 
-  // Realtime simulation toast — preserved from previous behaviour.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const target = escalations[0];
-      if (target) {
-        flashToast(
-          `Realtime · new escalation from ${target.owner} — ${target.patient}`
-        );
-      }
-    }, 4000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <div style={{ padding: "0 32px 120px", maxWidth: 1320, margin: "0 auto" }}>
       <HeroRow escalationCount={escalations.length} />
 
-      <KpiRow metrics={metrics} />
+      {error && <ErrorBanner error={error} onRetry={() => void refresh()} />}
+
+      <KpiRow metrics={metrics} loading={loading} />
 
       <div
         style={{
@@ -775,17 +791,21 @@ export default function DashboardPage() {
             }
           />
           <div style={{ display: "grid", gap: 10 }}>
-            {patients.map((p, i) => (
-              <PatientRow
-                key={p.id}
-                p={p}
-                index={i}
-                expanded={expandedPatient === p.id}
-                onToggle={() =>
-                  setExpandedPatient(expandedPatient === p.id ? null : p.id)
-                }
-              />
-            ))}
+            {loading && patients.length === 0
+              ? [0, 1, 2, 3, 4].map((i) => (
+                  <SkeletonPatientRow key={i} index={i} />
+                ))
+              : patients.map((p, i) => (
+                  <PatientRow
+                    key={p.id}
+                    p={p}
+                    index={i}
+                    expanded={expandedPatient === p.id}
+                    onToggle={() =>
+                      setExpandedPatient(expandedPatient === p.id ? null : p.id)
+                    }
+                  />
+                ))}
           </div>
         </div>
 

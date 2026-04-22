@@ -6,6 +6,7 @@ import { ReactNode, Suspense, useMemo, useRef, useState } from "react";
 import { Button, Card, Icon, Pill } from "@/components/atoms";
 import { PageHeader, PetAvatar } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
+import { StreamedText } from "@/components/app-shell/streamed-text";
 import { api } from "@/lib/api";
 import { C, FONT_MONO, FONT_SERIF, SHADOW_CARD } from "@/lib/tokens";
 import type {
@@ -186,7 +187,14 @@ function SoapCard({ s, onApprove }: { s: SoapNote; onApprove: () => void }) {
           >
             {r.k}
           </span>
-          <div style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>{r.v}</div>
+          <div style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>
+            <StreamedText
+              text={r.v}
+              chunkSize={2}
+              intervalMs={35}
+              startDelayMs={220 + i * 180}
+            />
+          </div>
         </div>
       ))}
     </OutputCardShell>
@@ -704,6 +712,14 @@ function ConsultContent() {
     try {
       const res = await api.consult({ patientId: patient.id, notes });
       setOutput(res.output);
+      const flagged = res.output.billing
+        .filter((b) => b.flagged)
+        .reduce((a, b) => a + b.price, 0);
+      flashToast(
+        flagged > 0
+          ? `Extracted · ${res.output.billing.length} billing items · RM ${flagged} recoverable`
+          : `Extracted · SOAP + ${res.output.prescription.length} rx + ${res.output.todos.length} todos`,
+      );
     } catch (err) {
       flashToast(err instanceof Error ? err.message : "Generation failed");
     } finally {

@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Button, Dot } from "@/components/atoms";
 import { PageHeader } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
+import { SkeletonEscalationCard } from "@/components/app-shell/skeleton";
+import { ErrorBanner } from "@/components/app-shell/error-banner";
 import { C, FONT_SERIF, FONT_MONO } from "@/lib/tokens";
 import type { FollowUp } from "@/lib/types";
 
@@ -399,8 +401,10 @@ function EmptyState({ filter }: { filter: Filter }) {
 /* ------------------------------------------------------------------ */
 
 export default function FollowUpsPage() {
-  const { followups, resolvedCount, openEscalation } = useStore();
+  const { followups, resolvedCount, openEscalation, loading, error, refresh } =
+    useStore();
   const [filter, setFilter] = useState<Filter>("all");
+  const showSkeleton = loading && followups.length === 0;
 
   const escalations = followups.filter((f) => f.level === "escalate");
   const monitors = followups.filter((f) => f.level === "monitor");
@@ -421,10 +425,20 @@ export default function FollowUpsPage() {
         sub="24–48h post-visit check-ins. Escalate only what needs you."
       />
 
+      {error && <ErrorBanner error={error} onRetry={() => void refresh()} />}
+
       <FilterTabs value={filter} onChange={setFilter} counts={counts} />
 
+      {showSkeleton && (
+        <div style={{ display: "grid", gap: 12, marginBottom: 32 }}>
+          {[0, 1, 2].map((i) => (
+            <SkeletonEscalationCard key={i} index={i} />
+          ))}
+        </div>
+      )}
+
       {/* Escalations section */}
-      {(filter === "all" || filter === "escalate") && (
+      {!showSkeleton && (filter === "all" || filter === "escalate") && (
         <div style={{ marginBottom: filter === "all" ? 32 : 0 }}>
           {filter === "all" && (
             <SectionHeading
@@ -451,7 +465,7 @@ export default function FollowUpsPage() {
       )}
 
       {/* Monitor section */}
-      {(filter === "all" || filter === "monitor") && (
+      {!showSkeleton && (filter === "all" || filter === "monitor") && (
         <div style={{ marginBottom: filter === "all" ? 32 : 0 }}>
           {filter === "all" && (
             <SectionHeading
@@ -473,7 +487,7 @@ export default function FollowUpsPage() {
       )}
 
       {/* Recovered section */}
-      {(filter === "all" || filter === "clear") && (
+      {!showSkeleton && (filter === "all" || filter === "clear") && (
         <div>
           {filter === "all" && (
             <SectionHeading

@@ -3,6 +3,8 @@
 import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
 import { Button, Card, Icon } from "@/components/atoms";
 import { PageHeader } from "@/components/app-shell/page-header";
+import { Skeleton } from "@/components/app-shell/skeleton";
+import { ErrorBanner } from "@/components/app-shell/error-banner";
 import { api } from "@/lib/api";
 import type { CorrectionRow, DiagnosisRow } from "@/lib/types";
 import {
@@ -824,12 +826,24 @@ function FollowUpFunnel() {
 export default function AnalyticsPage() {
   const [diagnoses, setDiagnoses] = useState<DiagnosisRow[]>([]);
   const [corrections, setCorrections] = useState<CorrectionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchAnalytics = () => {
+    setLoading(true);
+    setError(null);
+    api
+      .getAnalytics()
+      .then((r) => {
+        setDiagnoses(r.diagnoses);
+        setCorrections(r.corrections);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "failed to load"))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    void api.getAnalytics().then((r) => {
-      setDiagnoses(r.diagnoses);
-      setCorrections(r.corrections);
-    });
+    fetchAnalytics();
   }, []);
 
   const topDiagnoses = useMemo(
@@ -873,6 +887,10 @@ export default function AnalyticsPage() {
         }
       />
 
+      {error && (
+        <ErrorBanner error={error} onRetry={() => fetchAnalytics()} />
+      )}
+
       {/* Section 1 — KPI row */}
       <div
         style={{
@@ -882,38 +900,54 @@ export default function AnalyticsPage() {
           animation: "fadeUp 480ms cubic-bezier(0.2,0.8,0.2,1) 40ms both",
         }}
       >
-        <KPI
-          label="Time saved"
-          value="47h"
-          delta="+12% vs last month"
-          deltaTone="green"
-          spark={sparkTime}
-          sparkColor={C.greenDark}
-        />
-        <KPI
-          label="Billing recovered"
-          value="RM 9,200"
-          delta="+RM 1,400 vs last month"
-          deltaTone="green"
-          spark={sparkBill}
-          sparkColor={C.greenDark}
-        />
-        <KPI
-          label="Complications caught"
-          value="3"
-          delta="target 2–4 / month"
-          deltaTone="amber"
-          spark={sparkComp}
-          sparkColor={C.amber}
-        />
-        <KPI
-          label="Triage response rate"
-          value="78%"
-          delta=">70% target · +4 pts MoM"
-          deltaTone="green"
-          spark={sparkResp}
-          sparkColor={C.greenDark}
-        />
+        {loading ? (
+          [0, 1, 2, 3].map((i) => (
+            <Card key={i} style={{ padding: "20px 22px 18px" }}>
+              <Skeleton height={10} width={120} />
+              <div style={{ height: 12 }} />
+              <Skeleton height={36} width="70%" />
+              <div style={{ height: 10 }} />
+              <Skeleton height={10} width="60%" />
+              <div style={{ height: 16 }} />
+              <Skeleton height={28} width="100%" />
+            </Card>
+          ))
+        ) : (
+          <>
+            <KPI
+              label="Time saved"
+              value="47h"
+              delta="+12% vs last month"
+              deltaTone="green"
+              spark={sparkTime}
+              sparkColor={C.greenDark}
+            />
+            <KPI
+              label="Billing recovered"
+              value="RM 9,200"
+              delta="+RM 1,400 vs last month"
+              deltaTone="green"
+              spark={sparkBill}
+              sparkColor={C.greenDark}
+            />
+            <KPI
+              label="Complications caught"
+              value="3"
+              delta="target 2–4 / month"
+              deltaTone="amber"
+              spark={sparkComp}
+              sparkColor={C.amber}
+            />
+            <KPI
+              label="Triage response rate"
+              value="78%"
+              delta=">70% target · +4 pts MoM"
+              deltaTone="green"
+              spark={sparkResp}
+              sparkColor={C.greenDark}
+            />
+          </>
+        )}
       </div>
 
       {/* Section 2 — Triage decision distribution */}

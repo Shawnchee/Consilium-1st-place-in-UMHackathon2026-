@@ -34,6 +34,37 @@ export interface Differential {
   tone: "red" | "green";
 }
 
+export type ToolName =
+  | "request_photo"
+  | "request_temperature"
+  | "request_appetite_timeline"
+  | "request_medication_compliance"
+  | "schedule_doctor_callback";
+
+/**
+ * One turn in the triage conversation. Rendered as bubbles in the
+ * escalation modal; also the canonical log the agent reasons over on
+ * subsequent turns.
+ */
+export type ConversationTurn =
+  | { role: "owner"; text: string; ts: string }
+  | {
+      role: "bot_tool";
+      tool: ToolName;
+      args: Record<string, unknown>;
+      reasoning: string;
+      ownerPrompt: string;
+      ts: string;
+    }
+  | {
+      role: "bot_decision";
+      decision: FollowUpLevel;
+      confidence: number;
+      differentials: Differential[];
+      reply: string;
+      ts: string;
+    };
+
 export interface FollowUp {
   id: string;
   level: FollowUpLevel;
@@ -46,6 +77,8 @@ export interface FollowUp {
   recommendation: string;
   draft?: string;
   tsLabel?: string;
+  conversation?: ConversationTurn[];
+  toolCallCount?: number;
 }
 
 export interface MetricCardData {
