@@ -41,6 +41,13 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
 .claude
 # PRD.md
 skills-lock.json
