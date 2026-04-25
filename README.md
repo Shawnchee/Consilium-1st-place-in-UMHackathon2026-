@@ -6,7 +6,34 @@
 
 Consilium gives solo vet clinics an AI copilot that briefs the doctor before every consult, captures and structures clinical notes during it, and autonomously follows up with owners after — escalating only the cases that genuinely need the doctor's eyes.
 
-See [`PRD.md`](./PRD.md) for the full product spec and [`TODO.md`](./TODO.md) for the phased build plan.
+🔗 **Repository:** <https://github.com/Shawnchee/DA-Homies>
+🌐 **Live demo:** <https://consilium-tau.vercel.app/dashboard>
+
+---
+
+## 🎥 Pitch Video (10-minute demo)
+
+> **▶️ Watch the pitch + product demo:** **<https://drive.google.com/file/d/1XFIBHLVO8OItMsTh8jcMqsAVfZDE3XTE/view?usp=drive_link>**
+
+The video walks through the problem, the three-stage decision layer (pre-consult brief → consult capture → post-discharge triage), and a live end-to-end demo of the Telegram-based owner follow-up triggering an escalation card on the doctor dashboard.
+
+---
+
+## 📄 Submission Deliverables
+
+All required documentation is checked into this repository in PDF format.
+
+| Deliverable | File | Description |
+|---|---|---|
+| 📘 **PRD** (Product Requirements) | [`PRD.pdf`](./PRD.pdf) | Product vision, user flows, features (F1–F6), success metrics |
+| 🏛️ **SAD** (System Architecture) | [`SAD.pdf`](./SAD.pdf) | System architecture diagrams, component interactions, data flow |
+| 🧪 **QATD** (Quality Assurance & Testing) | [`QATD.pdf`](./QATD.pdf) | Test strategy, test cases, QA matrix, coverage |
+| 🎤 **Pitch Deck** | [`Consilium Pitch Deck.pdf`](./Consilium%20Pitch%20Deck.pdf) | Hackathon pitch slides |
+| 🎥 **Pitch Video (10 min)** | [Google Drive link](https://drive.google.com/file/d/1XFIBHLVO8OItMsTh8jcMqsAVfZDE3XTE/view?usp=drive_link) | Recorded pitch + live product demonstration |
+| 💾 **Code Repository** | <https://github.com/Shawnchee/DA-Homies> | Full source code |
+| 🌐 **Live Deployment** | <https://consilium-tau.vercel.app/dashboard> | Hosted demo (Vercel) |
+
+📁 **Full submission Drive folder:** <https://drive.google.com/drive/u/0/folders/160O04WT0iuOfyCdfYf1EiLhesZAOUw5k>
 
 ---
 
@@ -68,20 +95,108 @@ Watch the terminal running `start-bot.ts` — you'll see colour-coded boxes for 
 
 ---
 
-## Stack
+## Tech Stack
 
-| Layer | Tool |
-|---|---|
-| App | Next.js 16 (App Router) + React 19 |
-| Styling | Tailwind CSS v4 |
-| Motion / 3D | motion, three.js (r184) |
-| Reasoning + vision | Anthropic Claude — Haiku 4.5 (brief), Sonnet 4.6 (consult, triage). Multimodal calls send wound photos / lab images alongside text. |
-| LLM tools | Tavily web-search (drug recalls, fresh guidance) + 5 user-facing clarifying tools (request_photo, request_temperature, etc.) |
-| Speech-to-text | Deepgram nova-3 — voice consult dictation via `/api/transcribe` |
-| Agent framework | LangGraph (Python sidecar) — deferred to finals |
-| Database | Supabase (Postgres + Realtime + tavily_cache) |
-| Bot | grammY (Telegram) — polling in dev, webhook route ready for prod |
-| Deploy | Vercel |
+| Layer | Tool | Notes |
+|---|---|---|
+| App framework | **Next.js 16** (App Router) + **React 19** | Frontend + API routes in one repo, deploys as one unit |
+| Styling | **Tailwind CSS v4** | Utility-first styling |
+| Motion / 3D | **motion**, **three.js** (r184) | Dog mascot cursor tracking + page transitions |
+| Reasoning + vision | **Anthropic Claude** — Haiku 4.5 (brief), Sonnet 4.6 (consult, triage) | Multimodal: wound photos / lab images / X-rays pass alongside text. Per-feature model overrides via env. |
+| LLM tool-use | `tavily_search` (server-executed) + 5 user-facing clarifying tools (`request_photo`, `request_temperature`, `request_appetite_timeline`, `request_medication_compliance`, `schedule_doctor_callback`) + `emit_*` structured-output tools | See `lib/tools/registry.ts`. Tavily results are 7-day cached in `tavily_cache`. |
+| Speech-to-text | **Deepgram nova-3** | Voice consult dictation via `POST /api/transcribe`. Auto language detection (Bahasa / English / Mandarin code-switching). |
+| Web-search | **Tavily** | Drug-recall + fresh clinical guidance lookups. Optional — when key is absent, Claude proceeds without web context. |
+| Telegram bot | **grammY** (TypeScript) | Polling in dev (`scripts/start-bot.ts`), webhook route (`app/api/telegram/webhook`) ready for prod |
+| Database | **Supabase (PostgreSQL)** | Patients / visits / followups / corrections + `tavily_cache` |
+| Realtime | **Supabase Realtime** | Dashboard live updates the moment a triage decision is written |
+| File storage | **Supabase Storage** | `consult-photos` + `owner-photos` public buckets — inline base64 fallback when buckets are missing |
+| Agent framework | **LangGraph** (Python sidecar) | Deferred to finals. Today's TS tool-use loop in `lib/llm.ts` handles all flows. |
+| Deployment | **Vercel** | One-command deploy, free tier |
+| Demo data | Synthetic JSON seed | 150 patients, 10 diagnoses, 3 recovery patterns |
+
+---
+
+## Architecture
+
+### High-level system view
+
+```
+┌────────────────────────┐       ┌────────────────────────────────────┐
+│   Pet Owner (Telegram) │◄─────►│  Telegram Bot (grammY)             │
+└────────────────────────┘       │   • polling (dev)                  │
+                                 │   • webhook (prod)                 │
+                                 └──────────────┬─────────────────────┘
+                                                │ shared handler
+                                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│               Next.js 16 (App Router) — single repo                 │
+│                                                                     │
+│   App pages (React 19 + Tailwind v4 + three.js):                    │
+│     • /dashboard   /consult   /follow-ups   /analytics   /passport  │
+│                                                                     │
+│   API routes:                                                       │
+│     POST /api/brief        ← Claude Haiku 4.5  (emit_brief)         │
+│     POST /api/consult      ← Claude Sonnet 4.6 (emit_consult +      │
+│                              tavily_search, multimodal)             │
+│     POST /api/triage       ← Claude Sonnet 4.6 (tool-use loop:      │
+│                              clarifying × 1 OR emit_decision)       │
+│     POST /api/transcribe   ← Deepgram nova-3                        │
+│     POST /api/upload       ← Supabase Storage                       │
+│     POST /api/corrections  ← feedback loop (few-shot)               │
+│     POST /api/telegram/webhook                                      │
+│                                                                     │
+│   lib/llm.ts  ── tool-use loop, vision, per-feature model routing   │
+│   lib/tools/  ── tavily + clarifying + emit tool registry           │
+│   lib/prompts.ts ── system prompts with guardrails                  │
+└──────────────────────┬──────────────────────────────────────────────┘
+                       │
+        ┌──────────────┼─────────────────────────────────┐
+        ▼              ▼                                 ▼
+┌──────────────┐ ┌─────────────┐  ┌──────────────────────────────────┐
+│  Anthropic   │ │  Deepgram   │  │  Supabase                        │
+│  Claude API  │ │  nova-3 STT │  │  • Postgres (patients/visits/    │
+│  (Haiku 4.5  │ │             │  │    followups/corrections/        │
+│   + Sonnet   │ │             │  │    tavily_cache)                 │
+│   4.6)       │ │             │  │  • Realtime (dashboard updates)  │
+└──────────────┘ └─────────────┘  │  • Storage (consult-/owner-      │
+                                  │    photos buckets, public)       │
+┌─────────────┐                   └──────────────────────────────────┘
+│   Tavily    │
+│   Search    │
+│   API       │ (tool-called by Claude during consult / triage when
+└─────────────┘  drug-recall or fresh-guidance check is needed)
+```
+
+### Decision-layer flow (the core thesis)
+
+```
+   BEFORE                       DURING                          AFTER
+   ──────                       ──────                          ─────
+                                                       ┌──────────────────┐
+[F1] Pre-consult brief    [F2] Consult capture         │ [F3] Telegram    │
+     Haiku 4.5                 Sonnet 4.6              │      follow-up   │
+     emit_brief                emit_consult            │      Sonnet 4.6  │
+        │                      + tavily_search         │      tool loop   │
+        ▼                      + vision (photos)       │                  │
+  5-line patient                  │                    │  clear / monitor │
+  briefing card                   ▼                    │  / escalate      │
+                          SOAP + Rx + billing          └────────┬─────────┘
+                          + todos                              │
+                                                               ▼
+                                                      [F4] Doctor dashboard
+                                                           Realtime escalation
+                                                                │
+                                                                ▼
+                                                      [F5] Doctor approves /
+                                                           edits  →  feeds
+                                                           back as few-shot
+                                                                │
+                                                                ▼
+                                                      [F6] Pet passport
+                                                           auto-updated
+```
+
+For the full architecture (sequence diagrams, deployment topology, security model), see [`SAD.pdf`](./SAD.pdf).
 
 ---
 
@@ -107,6 +222,8 @@ All keys are documented in `.env.local.example`. The groups that flip the app ou
 
 Per-feature model overrides (defaults baked in code): `ANTHROPIC_MODEL_BRIEF`, `ANTHROPIC_MODEL_CONSULT`, `ANTHROPIC_MODEL_TRIAGE`.
 
+Clinic identity is env-driven (no hardcoded clinic name): `NEXT_PUBLIC_CLINIC_*` (client) + `CLINIC_*` (server) — see `lib/env.ts` and `lib/clinic.ts`.
+
 ---
 
 ## Project layout
@@ -114,7 +231,7 @@ Per-feature model overrides (defaults baked in code): `ANTHROPIC_MODEL_BRIEF`, `
 ```
 app/
   (app)/                # authed shell: dashboard, consult, follow-ups, analytics, passport
-  api/                  # server routes (brief, consult, triage, transcribe, followups, telegram/webhook, ...)
+  api/                  # server routes (brief, consult, triage, transcribe, upload, followups, telegram/webhook, ...)
   layout.tsx, page.tsx  # marketing landing
 components/
   app-shell/            # store, header, page header, escalation modal, toast, skeletons
@@ -126,6 +243,7 @@ lib/
   types.ts              # domain types
   tokens.ts             # design tokens
   env.ts                # typed env reader + mock-mode helpers
+  clinic.ts             # client-side clinic identity (NEXT_PUBLIC_CLINIC_*)
   llm.ts                # Anthropic Claude wrapper — tool-use loop + vision (per-feature model routing)
   glm.ts                # back-compat re-export of llm.ts
   glm-fixtures.ts       # triage/brief/consult fixtures (mock mode)
@@ -145,7 +263,7 @@ scripts/
   test-realtime.ts      # realtime smoke
   test-tool-calling.ts  # 2-turn triage smoke
 supabase/               # migrations + seed
-langgraph/              # triage graph (deferred — see Backlog)
+agent/                  # LangGraph triage graph (Python sidecar — deferred to finals)
 ```
 
 ---
@@ -166,3 +284,12 @@ npx tsx scripts/test-realtime.ts                      # Supabase Realtime smoke
 npx tsx scripts/test-tool-calling.ts                  # multi-turn triage smoke
 ```
 
+---
+
+## Team
+
+Built by **DA-Homies** for UMHackathon 2026.
+
+## License
+
+Hackathon submission — all rights reserved by the team.
