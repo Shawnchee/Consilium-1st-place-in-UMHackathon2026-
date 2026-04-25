@@ -10,6 +10,8 @@
     "seed:gen": "tsx scripts/csv-to-seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@deepgram/sdk": "^5.0.0",
     "@langchain/core": "^1.1.41",
     "@langchain/openai": "^1.4.4",
     "@supabase/supabase-js": "^2.104.0",

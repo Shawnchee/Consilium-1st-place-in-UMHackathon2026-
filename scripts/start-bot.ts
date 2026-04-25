@@ -39,7 +39,7 @@ loadEnvConfig(process.cwd());
     console.log(`[bot] <- ${chatId}: ${text}`);
     try {
       const { reply, decision, followupId, confidence } =
-        await handleOwnerMessage(chatId, text);
+        await handleOwnerMessage(chatId, { text });
       console.log(
         `[bot] -> decision=${decision} followup=${followupId ?? "(unlinked)"} conf=${
           confidence ?? "-"
@@ -50,6 +50,36 @@ loadEnvConfig(process.cwd());
       console.error("[bot] error handling message", err);
       await ctx.reply(
         "Sorry — something went wrong. A clinic staff member will follow up shortly.",
+      );
+    }
+  });
+
+  // Photo messages (with optional caption). Telegram sends multiple
+  // PhotoSize entries — the last is the largest. Take that one.
+  bot.on("message:photo", async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const photoSizes = ctx.message.photo;
+    const largest = photoSizes[photoSizes.length - 1];
+    const caption = ctx.message.caption ?? "";
+    console.log(
+      `[bot] <- ${chatId}: [photo${caption ? ` + caption: "${caption}"` : ""}]`,
+    );
+    try {
+      const { reply, decision, followupId, confidence, photoUrls } =
+        await handleOwnerMessage(chatId, {
+          text: caption,
+          photoFileIds: [largest.file_id],
+        });
+      console.log(
+        `[bot] -> decision=${decision} followup=${followupId ?? "(unlinked)"} conf=${
+          confidence ?? "-"
+        } photo=${photoUrls?.[0] ?? "(none)"}`,
+      );
+      await ctx.reply(reply);
+    } catch (err) {
+      console.error("[bot] error handling photo", err);
+      await ctx.reply(
+        "Sorry — couldn't process that photo. A clinic staff member will follow up shortly.",
       );
     }
   });

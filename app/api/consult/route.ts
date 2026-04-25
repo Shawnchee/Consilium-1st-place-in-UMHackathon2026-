@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => {
       throw new ApiError(400, "invalid JSON");
     });
-    const { patientId, notes } = parseConsultRequest(body);
+    const { patientId, notes, imageUrls } = parseConsultRequest(body);
 
     let patient: PatientLookup | null = null;
 
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       feature: "consult",
       user: notes,
       context: { patientName: patient.name, patientId },
+      images: imageUrls?.map((url) => ({ url })),
     });
 
     let visitId = `mock-visit-${Date.now()}`;

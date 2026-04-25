@@ -30,6 +30,8 @@ export type GetBriefResponse = {
 export interface ConsultRequest {
   patientId: string;
   notes: string;
+  /** Optional public URLs (e.g. Supabase Storage) of photos taken during the consult. */
+  imageUrls?: string[];
 }
 export type ConsultResponse = {
   visitId: string;
@@ -43,7 +45,13 @@ export function parseConsultRequest(raw: unknown): ConsultRequest {
     throw new ApiError(400, "patientId required");
   if (typeof r.notes !== "string" || !r.notes.trim())
     throw new ApiError(400, "notes required");
-  return { patientId: r.patientId, notes: r.notes };
+  let imageUrls: string[] | undefined;
+  if (r.imageUrls !== undefined) {
+    if (!Array.isArray(r.imageUrls) || r.imageUrls.some((u) => typeof u !== "string"))
+      throw new ApiError(400, "imageUrls must be string[]");
+    imageUrls = r.imageUrls as string[];
+  }
+  return { patientId: r.patientId, notes: r.notes, imageUrls };
 }
 
 // ─── /api/triage ────────────────────────────────────────────────────────────

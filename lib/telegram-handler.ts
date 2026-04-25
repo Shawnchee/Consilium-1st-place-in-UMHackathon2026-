@@ -18,6 +18,8 @@
 import { callGLM } from "./glm";
 import { hasSupabaseAdmin } from "./env";
 import { getSupabaseServer } from "./supabase";
+import { fetchTelegramPhotoAsImage } from "./telegram";
+import type { LLMImage } from "./llm";
 import type {
   TriageDecision,
   TriageFixtureOutput,
@@ -31,6 +33,15 @@ export interface HandleOwnerMessageResult {
   followupId?: string;
   confidence?: number;
   toolName?: string;
+  /** URLs of any photos that were downloaded + persisted for this turn. */
+  photoUrls?: string[];
+}
+
+export interface OwnerMessageInput {
+  /** Caption text (may be empty when only a photo was sent). */
+  text: string;
+  /** Telegram file_ids; we'll download + upload to owner-photos and pass URLs to Claude. */
+  photoFileIds?: string[];
 }
 
 type FollowupRowMini = {
@@ -113,8 +124,11 @@ function logUnlinked(chatId: string) {
 
 export async function handleOwnerMessage(
   chatId: string,
-  text: string,
+  textOrInput: string | OwnerMessageInput,
 ): Promise<HandleOwnerMessageResult> {
+  const input: OwnerMessageInput =
+    typeof textOrInput === "string" ? { text: textOrInput } : textOrInput;
+  const text = input.text || (input.photoFileIds?.length ? "(photo only — no caption)" : "");
   let row: FollowupRowMini | null = null;
 
   if (hasSupabaseAdmin()) {
@@ -144,9 +158,28 @@ export async function handleOwnerMessage(
   const turnIndex = conv.length + 1;
   logInbound(chatId, text, turnIndex);
 
+  // Resolve any owner-sent photos. Each file_id → owner-photos bucket → URL
+  // (or base64 fallback). Done in parallel; failures are silent and just
+  // omit that photo from the LLM call.
+  const photoFileIds = input.photoFileIds ?? [];
+  let images: LLMImage[] = [];
+  if (photoFileIds.length > 0) {
+    const fetched = await Promise.all(
+      photoFileIds.map((id) => fetchTelegramPhotoAsImage(id)),
+    );
+    images = fetched.filter((x): x is LLMImage => x !== null);
+    if (images.length > 0) {
+      console.log(
+        `\x1b[36m[bot]\x1b[0m photos    chat=${chatId}  count=${images.length}  ` +
+          `urls=${images.map((i) => i.url ?? "(base64)").join(", ")}`,
+      );
+    }
+  }
+  const photoUrls = images.map((i) => i.url).filter((u): u is string => Boolean(u));
+
   const ownerTurn: ConversationTurn = {
     role: "owner",
-    text,
+    text: photoUrls.length > 0 ? `${text}  [photo: ${photoUrls.length}]` : text,
     ts: nowIso(),
   };
 
@@ -160,6 +193,7 @@ export async function handleOwnerMessage(
     feature: "triage",
     user: text,
     context: fixtureContext,
+    images: images.length > 0 ? images : undefined,
   });
   const result = glmResult.data;
 
@@ -197,6 +231,7 @@ export async function handleOwnerMessage(
       decision: "awaiting_info",
       followupId: row.id,
       toolName: result.tool,
+      photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
     };
   }
 
@@ -238,6 +273,7 @@ export async function handleOwnerMessage(
     decision: result.decision,
     followupId: row.id,
     confidence: result.confidence,
+    photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
   };
 }
 

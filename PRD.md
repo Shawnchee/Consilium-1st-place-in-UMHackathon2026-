@@ -16,6 +16,8 @@ Small vet clinics (2–5 doctors) in SEA lose 3+ hours daily to admin, miss 10�
 **Core thesis:**
 Every other vet AI automates the exam room. Consilium owns the decision layer — before the consult, during it, and after it.
 
+**Reasoning core:** Anthropic Claude (Haiku 4.5 for the speed-read brief; Sonnet 4.6 for consult capture and triage where multimodal vision + tool-use loops matter). The model has a `tavily_search` tool for fresh clinical guidance and drug-recall checks, and five user-facing clarifying tools for ambiguous owner messages on Telegram.
+
 ---
 
 ## 2. Target Users
@@ -36,7 +38,7 @@ Every other vet AI automates the exam room. Consilium owns the decision layer �
 | Billing recovery per clinic per month | RM 8,000–12,000 |
 | Post-treatment complications caught early | 2–4 per month |
 | Telegram follow-up response rate | >70% |
-| Triage accuracy (GLM vs keyword baseline) | >90% vs ~61% |
+| Triage accuracy (Claude vs keyword baseline) | >90% vs ~61% |
 
 ---
 
@@ -50,25 +52,29 @@ Owner brings sick pet
         ↓
 Doctor sees the patient (consultation)
         ↓
-[F2] Doctor dictates / types notes
-     → GLM generates: SOAP note + prescription + billing checklist + todo list
+[F2] Doctor dictates (Deepgram nova-3 STT) / types notes — may attach photos (wound, lab, X-ray)
+     → Claude Sonnet 4.6 generates: SOAP note + prescription + billing checklist + todo list
+        (calls tavily_search inline if a recommended drug needs a recall check)
      → Doctor reviews, taps approve or edits
         ↓
 Patient goes home
         ↓
 [F3] 24–48h later: Telegram bot messages owner
-     → Owner replies in natural language
-     → GLM triages reply → 3 possible outcomes:
+     → Owner replies in natural language (and may send a photo of the wound)
+     → Claude Sonnet 4.6 triages reply → 3 possible outcomes:
           A. All clear     → auto-reassurance sent, case closed
           B. Monitor       → advice sent, check-in scheduled tomorrow
           C. Escalate      → doctor dashboard gets escalation card
+     → If ambiguous, the model may call a clarifying tool ONCE
+        (request_photo / request_temperature / request_appetite_timeline /
+         request_medication_compliance / schedule_doctor_callback) before deciding
         ↓
 [F4] Doctor sees escalation card on dashboard
-     → GLM presents: differential causes + confidence % + recommended action + draft response
+     → Claude presents: differential causes + confidence % + recommended action + draft response
      → Doctor taps Approve / Edit / Call Owner
      → Response sent to owner via Telegram
         ↓
-[F5] Outcome logged → feeds back into future GLM prompt context
+[F5] Outcome logged → feeds back into future Claude prompt context (few-shot)
         ↓
 [F6] Pet passport auto-updated, shareable via QR link
 ```
@@ -85,8 +91,8 @@ Patient goes home
 
 **Input:** All historical visit notes (unstructured text), lab results, billing history, past prescriptions — stored in Supabase
 
-**GLM does:**
-Reads free-text notes across multiple visits → outputs structured 5-line brief
+**Claude does (Haiku 4.5):**
+Reads free-text notes across multiple visits → calls `emit_brief` tool with the structured 5-line output. No web search on this path — speed matters more than freshness.
 
 **Output card:**
 ```
@@ -99,7 +105,7 @@ Probe today:   Check if ear condition fully resolved
 Pending:       Annual vaccine overdue by 6 weeks
 ```
 
-**Why GLM is non-removable:** Notes are years of free text across inconsistent formats. No SQL query summarises clinical trajectory or extracts compliance patterns.
+**Why the LLM is non-removable:** Notes are years of free text across inconsistent formats. No SQL query summarises clinical trajectory or extracts compliance patterns.
 
 **Impact:** 4 min saved × 20 patients/day = **80 min/day per doctor**
 
@@ -107,11 +113,16 @@ Pending:       Annual vaccine overdue by 6 weeks
 
 ### F2 — Consultation Capture → Structured Output
 
-**Trigger:** Doctor clicks "Start Consult" → speaks or types notes
+**Trigger:** Doctor clicks "Start Consult" → speaks or types notes, optionally attaches photos (wound, lab printout, X-ray) via the 📎 button.
 
-**Input:** Voice recording (transcribed) or typed free text
+**Input pipeline:**
+1. **Voice** — browser `MediaRecorder` captures audio on tap; on stop the WebM blob is `POST`ed to `/api/transcribe` → Deepgram nova-3 → transcript appended to the notes textarea.
+2. **Photos** — file input → in-memory thumbnails → on Generate, `POST /api/upload` (multipart) pushes to the `consult-photos` Supabase Storage bucket and returns public URLs.
+3. **Text + URLs** — `POST /api/consult` with `{ patientId, notes, imageUrls }`.
 
-**GLM outputs four things simultaneously:**
+The UI shows three states: `Record voice` → `Recording 0:12` → `Transcribing…`. Image upload runs as part of Generate (button label flips to `Uploading photos…` while files are in flight).
+
+**Claude (Sonnet 4.6) outputs four things via a single `emit_consult` tool call:**
 
 **SOAP Note**
 ```
@@ -128,7 +139,7 @@ Dose: 0.1mg/kg once daily with food | Duration: 7 days | Dispensed: 20mL
 ```
 
 **Billing Recovery Checklist**
-GLM cross-references diagnosis against billing matrix:
+Claude cross-references diagnosis against billing matrix (and may call `tavily_search` once if a recommended drug needs a recall check):
 ```
 ✅ Consultation fee — RM 50
 ✅ Meloxicam dispensed — RM 35
@@ -174,8 +185,17 @@ Draft response: [ready]
 [ ✓ Approve & Send ]  [ Edit ]  [ 📞 Call Owner ]
 ```
 
-**Why GLM is non-removable:**
-"She's been just lying there and won't touch her food" cannot be parsed by keyword rules in clinical context. GLM reads emotional owner language + patient history + procedure type → confidence-scored differential. Remove GLM → you have a Telegram bot that says "please call the clinic."
+**Why the LLM is non-removable:**
+"She's been just lying there and won't touch her food" cannot be parsed by keyword rules in clinical context. Claude reads emotional owner language + patient history + procedure type + (optional) attached wound photo → confidence-scored differential. Remove the LLM → you have a Telegram bot that says "please call the clinic."
+
+**Owner photo pipeline (Telegram → Claude vision):**
+1. Owner sends a photo (with optional caption) via Telegram.
+2. grammY surfaces `message.photo` (an array of PhotoSize at multiple resolutions); the polling script and webhook both pick the largest entry's `file_id`.
+3. `lib/telegram.fetchTelegramPhotoAsImage(file_id)` calls `bot.api.getFile`, downloads the binary from `api.telegram.org/file/bot<TOKEN>/<path>`, and uploads to the `owner-photos` Supabase Storage bucket. Returns `{ url }` for the public path (or `{ base64 }` if Storage isn't configured).
+4. The triage `callGLM` invocation passes the result(s) as `images: LLMImage[]` — Claude vision sees the photo alongside the caption and the conversation history.
+5. The followup row's `conversation` entry annotates the turn with `[photo: N]` for the dashboard.
+
+**Tool-use loop in triage:** Claude has access to one server-side tool (`tavily_search`) and five user-facing clarifying tools (`request_photo`, `request_temperature`, `request_appetite_timeline`, `request_medication_compliance`, `schedule_doctor_callback`). On an ambiguous turn the model may call exactly ONE clarifying tool to ask the owner a targeted question; the next owner reply re-enters the loop with `toolCallCount=1`, after which the model MUST emit a decision. Tavily is invisible to the owner — it runs server-side and the result is fed back into the same Claude call.
 
 **LangGraph state machine:**
 ```python
@@ -211,7 +231,7 @@ Today's Schedule     |  Follow-Up Queue       |  This Month
 
 **Two layers in Supabase:**
 
-**Layer 1 — LangGraph checkpointer (conversation state)**
+**Layer 1 — LangGraph checkpointer (conversation state)** *(deferred to finals)*
 ```python
 # LangGraph PostgresSaver points at Supabase DB
 conn = psycopg.connect(os.environ["SUPABASE_DB_URL"])
@@ -225,17 +245,17 @@ graph = builder.compile(checkpointer=checkpointer)
 # Doctor rejects → log it
 supabase.table("corrections").insert({
     "feature": "triage",
-    "glm_output": "MONITOR",
+    "glm_output": "MONITOR",  # column name kept for migration compat; stores Claude output
     "rejection_reason": "wrong_triage",
     "doctor_correction": "ESCALATE — wound looked infected"
 })
 
-# Before next GLM call → fetch and inject as few-shot
+# Before next Claude call → fetch and inject as few-shot in the system prompt
 corrections = supabase.table("corrections")
     .select("*").eq("feature", "triage").limit(5).execute()
 
-# Inject into prompt as clinic-specific context
-# GLM gets smarter per clinic without any model retraining
+# Inject into prompt as clinic-specific context (lib/llm.ts buildSystem helper)
+# Claude gets smarter per clinic without any model retraining
 ```
 
 Doctor only sees: `[ ✓ Correct ] [ ✗ Wrong — Wrong triage level / Wrong medication / Missing item ]`
@@ -282,22 +302,31 @@ URL: `consilium.app/passport/{uuid}` — Next.js static page, no auth required.
 
 | Layer | Tool | Notes |
 |---|---|---|
-| Framework | Next.js 14 (App Router) | Frontend + API routes in one repo |
-| AI / GLM | Z.AI GLM | Mandatory. All reasoning, extraction, triage |
-| Agent framework | LangGraph (Python) | Triage state machine + checkpointer |
-| Telegram Bot | grammY (TypeScript) | Runs inside Next.js API route |
-| Database | Supabase (PostgreSQL) | Data + LangGraph checkpointer + Realtime |
+| Framework | Next.js 16 (App Router) + React 19 | Frontend + API routes in one repo |
+| Reasoning + vision | **Anthropic Claude** — Haiku 4.5 (brief), Sonnet 4.6 (consult, triage) | Multimodal: photos pass alongside text. Per-feature model overrides via env. |
+| LLM tools | `tavily_search` (server-executed) + 5 user-facing clarifying tools + `emit_*` structured-output tools | See `lib/tools/registry.ts`. Tavily results are 7-day cached in `tavily_cache` table. |
+| Speech-to-text | **Deepgram nova-3** | Voice consult dictation. `POST /api/transcribe` accepts multipart audio, returns `{ transcript, confidence }`. $200 free credit covers hackathon. |
+| Web-search | **Tavily** | Drug-recall + fresh-guidance lookups. 1k free searches/mo. Optional — when key absent, the LLM proceeds without web context. |
+| Agent framework | LangGraph (Python sidecar) | Deferred to finals. The TypeScript tool-use loop in `lib/llm.ts` handles all current flows. |
+| Telegram Bot | grammY (TypeScript) | Runs inside Next.js API route + polling script |
+| Database | Supabase (PostgreSQL) | Patients/visits/followups/corrections + tavily_cache + Realtime |
 | Realtime | Supabase Realtime | Dashboard live updates on triage decisions |
-| 3D Frontend | Three.js (r128) | Dog mascot cursor tracking |
+| 3D Frontend | Three.js (r184) | Dog mascot cursor tracking |
 | Deployment | Vercel | One command deploy, free tier |
 | Demo Data | Synthetic JSON seed | 150 patients, 10 diagnoses, 3 recovery patterns |
 
 **Why Next.js over FastAPI:**
 - One codebase, one repo, one deployment
-- API routes are server-side — Z.AI API key never hits the client
+- API routes are server-side — Anthropic / Deepgram / Tavily keys never hit the client
 - No CORS configuration needed
 - Zi Qian can work on frontend and API routes simultaneously
 - `vercel deploy` and everything is live in 2 minutes
+
+**Why Claude over self-hosted/regional LLMs:**
+- Strict JSON adherence via the emit-tool pattern — SOAP and decision shapes never break
+- Tool-use loop is rock-solid for multi-step reasoning (Tavily + clarifying tools in the same call)
+- Vision is built in to the same model — wound photos and X-ray uploads need no separate pipeline
+- Two-tier cost: Haiku 4.5 on the cheap path (brief), Sonnet 4.6 on the demo-critical path (consult + triage). Total hackathon spend ≈ USD 3.
 
 ---
 
@@ -312,11 +341,15 @@ consilium/
 │   │   └── [id]/page.tsx         ← Pet passport public page (F6)
 │   └── api/
 │       ├── triage/
-│       │   └── route.ts          ← Telegram webhook → LangGraph → Supabase
+│       │   └── route.ts          ← Telegram webhook → Claude triage tool-use loop → Supabase
 │       ├── consult/
-│       │   └── route.ts          ← Consultation notes → GLM → structured output
+│       │   └── route.ts          ← Consultation notes (+ optional imageUrls) → Claude → structured output
 │       ├── brief/
 │       │   └── route.ts          ← Historical notes → pre-consult brief
+│       ├── transcribe/
+│       │   └── route.ts          ← Multipart audio → Deepgram nova-3 → { transcript, confidence }
+│       ├── upload/
+│       │   └── route.ts          ← Multipart files → Supabase Storage (consult-photos|owner-photos) → public URLs
 │       ├── patients/
 │       │   └── route.ts          ← Patient CRUD
 │       └── corrections/
@@ -331,10 +364,17 @@ consilium/
 │   ├── DogCompanion.tsx          ← Three.js 3D dog (cursor tracking)
 │   └── PetPassport.tsx           ← Passport page component
 ├── lib/
-│   ├── glm.ts                    ← Z.AI GLM client wrapper
+│   ├── llm.ts                    ← Claude wrapper — tool-use loop + vision (per-feature model routing)
+│   ├── glm.ts                    ← back-compat re-export of llm.ts
+│   ├── glm-fixtures.ts           ← mock-mode triage / brief / consult outputs
+│   ├── tools/
+│   │   ├── tavily.ts             ← Tavily tool spec + executor + 7-day cache
+│   │   └── registry.ts           ← Per-feature tool registry (server / user / emit)
+│   ├── storage.ts                ← Supabase Storage upload helper (consult-photos / owner-photos), base64 fallback
 │   ├── supabase.ts               ← Supabase client
-│   ├── telegram.ts               ← grammY bot setup
-│   └── prompts.ts                ← All GLM prompt templates
+│   ├── telegram.ts               ← grammY bot setup + fetchTelegramPhotoAsImage
+│   ├── telegram-handler.ts       ← Owner-message handler — multi-turn triage + photo download/upload
+│   └── prompts.ts                ← All Claude prompt templates with tool + vision guardrails
 ├── langgraph/
 │   ├── triage_graph.py           ← LangGraph state machine (Brandon)
 │   ├── nodes.py                  ← Individual node functions
@@ -497,11 +537,30 @@ corrections (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   visit_id          UUID REFERENCES visits(id),
   feature           TEXT, -- 'billing' | 'triage' | 'prescription'
-  glm_output        TEXT,
+  glm_output        TEXT, -- column kept for migration compat; stores Claude output
   rejection_reason  TEXT,
   doctor_correction TEXT,
   created_at        TIMESTAMPTZ DEFAULT now()
 )
+
+-- Optional: 7-day cache for Tavily web-search results (migration 0004).
+tavily_cache (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  query_norm  TEXT NOT NULL,           -- lower-cased, whitespace-collapsed
+  query_raw   TEXT NOT NULL,
+  payload     JSONB NOT NULL,           -- { query, results[], answer, cached:false }
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+)
+CREATE INDEX tavily_cache_query_norm_created_idx
+  ON tavily_cache (query_norm, created_at DESC);
+
+-- Storage buckets for image uploads (migration 0005). Both public so Claude
+-- vision can fetch URLs directly and the dashboard can render thumbnails.
+-- Without this migration, lib/storage.ts silently falls back to inline
+-- base64 — vision still works, you just lose the audit trail.
+storage.buckets:
+  consult-photos  (public)  ← vet-uploaded media during F2 consult capture
+  owner-photos    (public)  ← owner-sent photos forwarded by the Telegram bot
 
 -- LangGraph checkpointer tables (auto-created by checkpointer.setup())
 -- checkpoints, checkpoint_blobs, checkpoint_writes
@@ -516,7 +575,9 @@ ALTER TABLE followups REPLICA IDENTITY FULL;
 
 ---
 
-## 11. GLM Prompt Chains
+## 11. Claude Prompt Chains
+
+> Note: live prompts are in `lib/prompts.ts`. The shapes shown here are the structured outputs delivered via `emit_brief` / `emit_consult` / `emit_decision` tool calls — not free-text JSON. The model's tool-use loop in `lib/llm.ts` extracts `input` from those tool calls directly, so JSON-parse failures are impossible.
 
 ### F1 — Pre-Consult Brief
 ```
@@ -602,8 +663,10 @@ const channel = supabase
 - "Start Consult" button
 
 ### Screen 3 — Consultation Capture
-- Large textarea + voice record button
-- "Generate" → `POST /api/consult`
+- Mic bar with three states: `Record voice` → `Recording 0:12` (red pulse, live timer) → `Transcribing…`
+- 📎 photo attach button (max 6 images, in-memory thumbnail strip with × remove)
+- Large textarea + paste-in scenario dropdown
+- "Generate" button: `Uploading photos…` while attachments push to `consult-photos`, then `Generating…` while Claude works
 - Four output cards: SOAP / Prescription / Billing / Todos
 - Amber highlight on flagged billing items
 - Each card has individual approve/edit
@@ -700,7 +763,7 @@ Subtitle below the dog: *"Move your cursor — Milo is watching 🐾"*
 | 1:50–2:10 | Escalation card appears on dashboard in real time (Supabase Realtime). Read differentials. Tap Approve. Telegram confirmation on phone. "10 seconds." |
 | 2:10–2:25 | Open pet passport QR. Scan on phone. "Owner shares this with any vet. No paper records." |
 | 2:25–2:45 | Dashboard metrics: 47hrs saved, RM 9,200 recovered, 3 complications caught. "This month. One clinic." |
-| 2:45–3:00 | Close: "Remove the GLM — you have a Telegram bot that says call the clinic. The intelligence is the product." |
+| 2:45–3:00 | Close: "Remove Claude — you have a Telegram bot that says call the clinic. The intelligence is the product." |
 
 ---
 
@@ -713,16 +776,16 @@ Subtitle below the dog: *"Move your cursor — Milo is watching 🐾"*
 - 15 ambiguous: "She seems a bit quiet but ate a little bit"
 - 15 red flag: "Not moving, wound looks swollen and smells weird"
 
-**Test:** GLM triage vs keyword-matching baseline on same 50 messages
+**Test:** Claude triage vs keyword-matching baseline on same 50 messages
 
-| | GLM | Keyword baseline |
+| | Claude | Keyword baseline |
 |---|---|---|
 | Normal (20) | 95% correct | 90% correct |
 | Ambiguous (15) | 87% correct | 33% correct |
 | Red flag (15) | 100% correct | 67% correct |
 | **Overall** | **94%** | **63%** |
 
-The ambiguous row is your proof. Keyword matching collapses on natural human language. GLM doesn't. That delta is why the GLM is non-removable.
+The ambiguous row is your proof. Keyword matching collapses on natural human language. Claude doesn't. That delta is why the LLM is non-removable.
 
 ---
 
@@ -730,7 +793,7 @@ The ambiguous row is your proof. Keyword matching collapses on natural human lan
 
 | Person | Role | Owns |
 |---|---|---|
-| Brandon | AI Engineer | Z.AI GLM integration, all prompt chains, LangGraph triage graph, feedback loop (few-shot injection), `lib/glm.ts`, `langgraph/` folder |
+| Brandon | AI Engineer | Anthropic Claude integration (`lib/llm.ts`), tool registry (`lib/tools/*`), Tavily wiring, all prompt chains, LangGraph triage graph (deferred), feedback loop (few-shot injection), `langgraph/` folder |
 | Zi Qian | Software Engineer | Next.js setup, all API routes (`/api/*`), Supabase schema + seed, Telegram bot (grammY), Supabase Realtime wiring, Vercel deploy |
 | Yu Han | Data Analyst | 150 synthetic patients (`supabase/seed.sql`), 50 Telegram reply scenarios, validation accuracy table, dashboard metric simulations |
 | Shawn | Frontend + PM | All dashboard screens, escalation modal, patient card + brief UI, dog companion component, pitch deck, demo script rehearsal |
@@ -742,7 +805,7 @@ The ambiguous row is your proof. Keyword matching collapses on natural human lan
 
 ```
 Day 1 — 08:30  ALL: Repo created, Supabase project up, env vars shared
-Day 1 — 09:00  Brandon: Z.AI GLM responding, basic prompt working
+Day 1 — 09:00  Brandon: Claude responding via lib/llm.ts, basic prompt working
 Day 1 — 09:00  Zi Qian: Next.js scaffold, Supabase schema deployed, 10 patients seeded
 Day 1 — 09:00  Harrison: Billing matrix complete (10 diagnoses × items)
 Day 1 — 12:00  Brandon: F1 brief + F2 extraction prompts returning correct JSON
@@ -762,7 +825,7 @@ Day 2 — 15:00  Code freeze. Pitch deck final. Demo script locked.
 
 **Critical path:** Brandon and Zi Qian are blocked on each other at Day 1 15:00 integration. They must co-locate for that 3-hour window.
 
-**Biggest risk:** Z.AI GLM API key not working on Day 1. Resolve this before the hackathon starts. Have Brandon test a basic call the night before.
+**Biggest risk:** Anthropic credit balance / API key not working on Day 1. Resolve this before the hackathon starts. Have Brandon run `npx tsx scripts/test-glm.ts` the night before.
 
 ---
 
@@ -774,7 +837,8 @@ Day 2 — 15:00  Code freeze. Pitch deck final. Demo script locked.
 | Unstructured + structured data | Voice notes + historical free text + billing records processed together |
 | Context-aware reasoning | Patient age, species, procedure, post-op day all inform triage confidence |
 | Explain decisions clearly | Every GLM output shows reasoning — differentials, confidence %, recommended action |
-| GLM non-removable | Strip it → Telegram bot says "please call us." No brief, no billing recovery, no triage. Dead. |
+| LLM non-removable | Strip Claude → Telegram bot says "please call us." No brief, no billing recovery, no triage. Dead. |
 | Quantifiable impact | RM 10,000/month billing recovery + 3 hrs/day saved + complications caught. All simulatable. |
 | Clear target user | Solo vet clinics in Malaysia. ~3,000 clinics. Specific, real, underserved. |
-| Basic validation | 150 synthetic patients, 50 triage scenarios, GLM 94% vs keyword 63%. |
+| Basic validation | 150 synthetic patients, 50 triage scenarios, Claude 94% vs keyword 63%. |
+| Multimodal coverage | Voice (Deepgram nova-3) + photos (Claude vision) + text + tool-use (Tavily web search) — one model handles all four modalities. |
