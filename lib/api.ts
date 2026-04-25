@@ -52,4 +52,34 @@ export const api = {
     postJSON<TriageRequest, TriageResponse>("/api/triage", req),
   correction: (req: CorrectionRequest) =>
     postJSON<CorrectionRequest, CorrectionResponse>("/api/corrections", req),
+
+  /** Multipart upload of one or more images to a Supabase Storage bucket. */
+  uploadPhotos: async (
+    files: File[],
+    bucket: "consult-photos" | "owner-photos" = "consult-photos",
+  ): Promise<{ uploads: { url?: string; base64?: string; mediaType: string }[] }> => {
+    const fd = new FormData();
+    fd.append("bucket", bucket);
+    for (const f of files) fd.append("files", f);
+    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
+
+  /** Multipart upload of an audio Blob; returns Deepgram transcript text. */
+  transcribe: async (
+    audio: Blob,
+  ): Promise<{ transcript: string; confidence: number | null }> => {
+    const fd = new FormData();
+    fd.append("audio", audio, "consult.webm");
+    const res = await fetch("/api/transcribe", { method: "POST", body: fd });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  },
 };

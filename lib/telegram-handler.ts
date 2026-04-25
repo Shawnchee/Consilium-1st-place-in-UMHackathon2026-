@@ -4,21 +4,31 @@
  * Flow:
  *   1. Resolve a followup row via `telegram_chat_id`.
  *   2. Append the owner turn to `conversation`.
- *   3. Run triage. If fixture returns `tool_call` (and we haven't already
+ *   3. Run triage. If returns `tool_call` (and we haven't already
  *      spent our one allowed info-gathering turn), append bot_tool turn,
  *      increment tool_call_count, return the tool prompt. Status stays
  *      `pending` — no escalation yet.
- *   4. If fixture returns `decision`, append bot_decision turn, update the
+ *   4. If returns `decision`, append bot_decision turn, update the
  *      row's status + triage fields, return the reply draft.
  *
- * Every path emits a boxed console log so the terminal shows the agent's
- * reasoning to the judges in real time.
+ * Triage backend selection (`runTriage`):
+ *   - LangGraph Python sidecar when `LANGGRAPH_SERVICE_URL` is set.
+ *   - `callGLM` (Claude or fixture) otherwise, or as a fallback if the
+ *     sidecar errors out.
+ *
+ * Owner photos: when `photoFileIds` are supplied, each is downloaded via
+ * the Telegram Bot API, persisted to the `owner-photos` Supabase Storage
+ * bucket, and forwarded to Claude vision in the fallback path. (The
+ * sidecar contract doesn't carry images yet — TODO if we want vision in
+ * the LangGraph path.)
  */
 
 import { callGLM } from "./glm";
 import { callTriageAgent, isAgentEnabled } from "./agent";
 import { hasSupabaseAdmin } from "./env";
 import { getSupabaseServer } from "./supabase";
+import { fetchTelegramPhotoAsImage } from "./telegram";
+import type { LLMImage } from "./llm";
 import type {
   TriageDecision,
   TriageFixtureOutput,
@@ -37,6 +47,15 @@ export interface HandleOwnerMessageResult {
   followupId?: string;
   confidence?: number;
   toolName?: string;
+  /** URLs of any photos that were downloaded + persisted for this turn. */
+  photoUrls?: string[];
+}
+
+export interface OwnerMessageInput {
+  /** Caption text (may be empty when only a photo was sent). */
+  text: string;
+  /** Telegram file_ids; we'll download + upload to owner-photos and pass URLs to Claude. */
+  photoFileIds?: string[];
 }
 
 type FollowupRowMini = {
@@ -120,8 +139,12 @@ function logUnlinked(chatId: string) {
 
 export async function handleOwnerMessage(
   chatId: string,
-  text: string,
+  textOrInput: string | OwnerMessageInput,
 ): Promise<HandleOwnerMessageResult> {
+  const input: OwnerMessageInput =
+    typeof textOrInput === "string" ? { text: textOrInput } : textOrInput;
+  const text =
+    input.text || (input.photoFileIds?.length ? "(photo only — no caption)" : "");
   let row: FollowupRowMini | null = null;
 
   if (hasSupabaseAdmin()) {
@@ -155,9 +178,30 @@ export async function handleOwnerMessage(
   const patientName = row.visits?.patients?.name ?? "your pet";
   logInbound(chatId, text, turnIndex);
 
+  // Resolve any owner-sent photos. Each file_id → owner-photos bucket → URL
+  // (or base64 fallback). Done in parallel; failures are silent and just
+  // omit that photo from the LLM call.
+  const photoFileIds = input.photoFileIds ?? [];
+  let images: LLMImage[] = [];
+  if (photoFileIds.length > 0) {
+    const fetched = await Promise.all(
+      photoFileIds.map((id) => fetchTelegramPhotoAsImage(id)),
+    );
+    images = fetched.filter((x): x is LLMImage => x !== null);
+    if (images.length > 0) {
+      console.log(
+        `\x1b[36m[bot]\x1b[0m photos    chat=${chatId}  count=${images.length}  ` +
+          `urls=${images.map((i) => i.url ?? "(base64)").join(", ")}`,
+      );
+    }
+  }
+  const photoUrls = images
+    .map((i) => i.url)
+    .filter((u): u is string => Boolean(u));
+
   const ownerTurn: ConversationTurn = {
     role: "owner",
-    text,
+    text: photoUrls.length > 0 ? `${text}  [photo: ${photoUrls.length}]` : text,
     ts: nowIso(),
   };
 
@@ -169,6 +213,7 @@ export async function handleOwnerMessage(
     patientName,
     toolCallCount,
     priorConversation: conv,
+    images: images.length > 0 ? images : undefined,
   });
 
   /* ─── tool-call branch ────────────────────────────────────────────── */
@@ -205,6 +250,7 @@ export async function handleOwnerMessage(
       decision: "awaiting_info",
       followupId: row.id,
       toolName: result.tool,
+      photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
     };
   }
 
@@ -246,6 +292,7 @@ export async function handleOwnerMessage(
     decision: result.decision,
     followupId: row.id,
     confidence: result.confidence,
+    photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
   };
 }
 
@@ -259,12 +306,18 @@ interface RunTriageParams {
   patientName: string;
   toolCallCount: number;
   priorConversation: ConversationTurn[];
+  /** Owner-attached photos (Telegram → owner-photos bucket → Claude vision). */
+  images?: LLMImage[];
 }
 
 /**
  * Pick the LangGraph sidecar when LANGGRAPH_SERVICE_URL is set; fall back
  * to the in-process callGLM path on any sidecar error so the demo keeps
  * working even if the Python service is down.
+ *
+ * Note: the sidecar contract doesn't currently carry images. When photos
+ * are present we still try the sidecar (text-only) but only the fallback
+ * Claude path actually sees them. TODO: extend agent.ts request schema.
  */
 async function runTriage(p: RunTriageParams): Promise<TriageFixtureOutput> {
   if (isAgentEnabled() && p.patientId) {
@@ -281,7 +334,7 @@ async function runTriage(p: RunTriageParams): Promise<TriageFixtureOutput> {
       });
     } catch (err) {
       console.warn(
-        "[telegram-handler] sidecar failed, falling back to mock GLM:",
+        "[telegram-handler] sidecar failed, falling back to callGLM:",
         err,
       );
     }
@@ -295,6 +348,7 @@ async function runTriage(p: RunTriageParams): Promise<TriageFixtureOutput> {
       conversationText: conversationText(p.priorConversation),
       patientName: p.patientName,
     },
+    images: p.images,
   });
   return glmResult.data;
 }

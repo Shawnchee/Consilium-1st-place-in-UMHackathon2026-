@@ -691,7 +691,18 @@ function ConsultContent() {
   const [output, setOutput] = useState<ConsultOutput | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
+  const [transcribing, setTranscribing] = useState(false);
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const audioChunks = useRef<Blob[]>([]);
+  const mediaStream = useRef<MediaStream | null>(null);
+
+  // Image attachments — vet uploads of wound, lab, X-ray photos. Uploaded
+  // to consult-photos bucket on submit; URLs flow into api.consult.
+  type Attachment = { file: File; previewUrl: string };
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const billTotal = useMemo(
     () => (output ? output.billing.reduce((a, b) => a + b.price, 0) : 0),
@@ -710,7 +721,29 @@ function ConsultContent() {
     setGenerating(true);
     setOutput(null);
     try {
-      const res = await api.consult({ patientId: patient.id, notes });
+      // Upload any attached photos first; pass resulting URLs to /api/consult.
+      let imageUrls: string[] | undefined;
+      if (attachments.length > 0) {
+        setUploading(true);
+        try {
+          const { uploads } = await api.uploadPhotos(
+            attachments.map((a) => a.file),
+            "consult-photos",
+          );
+          imageUrls = uploads.map((u) => u.url).filter((u): u is string => Boolean(u));
+          if (imageUrls.length > 0) {
+            flashToast(`Uploaded ${imageUrls.length} photo${imageUrls.length === 1 ? "" : "s"}`);
+          }
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      const res = await api.consult({
+        patientId: patient.id,
+        notes,
+        imageUrls,
+      });
       setOutput(res.output);
       const flagged = res.output.billing
         .filter((b) => b.flagged)
@@ -727,19 +760,92 @@ function ConsultContent() {
     }
   };
 
-  const toggleRecord = () => {
+  const stopMicTracks = () => {
+    if (mediaStream.current) {
+      mediaStream.current.getTracks().forEach((t) => t.stop());
+      mediaStream.current = null;
+    }
+  };
+
+  const toggleRecord = async () => {
     if (recording) {
+      // Stop — onstop will fire transcription.
+      mediaRecorder.current?.stop();
       if (recordTimer.current) clearInterval(recordTimer.current);
       recordTimer.current = null;
       setRecording(false);
       setRecordSec(0);
-    } else {
+      return;
+    }
+
+    // Start
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      flashToast("Mic not supported in this browser");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStream.current = stream;
+      audioChunks.current = [];
+      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mediaRecorder.current = mr;
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) audioChunks.current.push(e.data);
+      };
+      mr.onstop = async () => {
+        stopMicTracks();
+        const blob = new Blob(audioChunks.current, { type: "audio/webm" });
+        audioChunks.current = [];
+        if (blob.size === 0) return;
+        setTranscribing(true);
+        try {
+          const { transcript } = await api.transcribe(blob);
+          if (transcript) {
+            setNotes((prev) => (prev ? `${prev.trim()} ${transcript}` : transcript));
+            flashToast("Transcribed · Deepgram nova-3");
+          } else {
+            flashToast("No speech detected");
+          }
+        } catch (err) {
+          flashToast(err instanceof Error ? err.message : "Transcription failed");
+        } finally {
+          setTranscribing(false);
+        }
+      };
+      mr.start();
       setRecording(true);
       setRecordSec(0);
       recordTimer.current = setInterval(() => {
         setRecordSec((s) => s + 1);
       }, 1000);
+    } catch (err) {
+      flashToast(
+        err instanceof Error && err.name === "NotAllowedError"
+          ? "Mic permission denied"
+          : "Could not access mic",
+      );
     }
+  };
+
+  const onPickFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).filter((f) =>
+      f.type.startsWith("image/"),
+    );
+    if (files.length === 0) return;
+    const next: Attachment[] = files.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    setAttachments((prev) => [...prev, ...next].slice(0, 6));
+    e.target.value = ""; // allow re-picking the same file
+  };
+
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => {
+      const dropped = prev[idx];
+      if (dropped) URL.revokeObjectURL(dropped.previewUrl);
+      return prev.filter((_, i) => i !== idx);
+    });
   };
 
   const pickExample = (text: string, label: string) => {
@@ -987,8 +1093,48 @@ function ConsultContent() {
                 ) : (
                   Icon.mic(13)
                 )}
-                {recording ? `Recording ${fmtTime(recordSec)}` : "Record voice"}
+                {recording
+                  ? `Recording ${fmtTime(recordSec)}`
+                  : transcribing
+                  ? "Transcribing…"
+                  : "Record voice"}
               </button>
+
+              {/* Photo attach */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={onPickFiles}
+                style={{ display: "none" }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={attachments.length >= 6}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 12px",
+                  borderRadius: 8,
+                  background: "#fff",
+                  border: `1px solid ${C.border}`,
+                  color: attachments.length >= 6 ? C.hint : C.text,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: attachments.length >= 6 ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}
+                title="Attach photos (wound, lab, X-ray) — max 6"
+              >
+                <span style={{ fontSize: 14, lineHeight: 1 }}>📎</span>
+                {attachments.length > 0
+                  ? `${attachments.length} photo${attachments.length === 1 ? "" : "s"}`
+                  : "Attach photo"}
+              </button>
+
               <div style={{ flex: 1 }} />
               <div
                 style={{
@@ -1000,6 +1146,64 @@ function ConsultContent() {
                 {notes.length} chars
               </div>
             </div>
+
+            {/* Attachment thumbnail strip */}
+            {attachments.length > 0 && (
+              <div
+                style={{
+                  padding: "10px 16px",
+                  borderBottom: `1px solid ${C.border}`,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  background: C.bgAlt,
+                }}
+              >
+                {attachments.map((a, i) => (
+                  <div
+                    key={`${a.file.name}-${i}`}
+                    style={{
+                      position: "relative",
+                      width: 56,
+                      height: 56,
+                      borderRadius: 6,
+                      overflow: "hidden",
+                      border: `1px solid ${C.border}`,
+                      background: "#fff",
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.previewUrl}
+                      alt={a.file.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      aria-label="Remove"
+                      style={{
+                        position: "absolute",
+                        top: 2,
+                        right: 2,
+                        width: 18,
+                        height: 18,
+                        borderRadius: 9,
+                        border: "none",
+                        background: "rgba(0,0,0,0.6)",
+                        color: "#fff",
+                        fontSize: 12,
+                        lineHeight: "16px",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <textarea
               value={notes}
@@ -1053,12 +1257,14 @@ function ConsultContent() {
               onClick={generate}
               icon={Icon.spark(14)}
               style={
-                !notes.trim() || generating
+                !notes.trim() || generating || uploading
                   ? { opacity: 0.45, pointerEvents: "none" }
                   : undefined
               }
             >
-              {generating
+              {uploading
+                ? "Uploading photos…"
+                : generating
                 ? "Generating…"
                 : output
                 ? "Regenerate structured output"
