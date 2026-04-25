@@ -7,7 +7,7 @@
 Consilium gives solo vet clinics an AI copilot that briefs the doctor before every consult, captures and structures clinical notes during it, and autonomously follows up with owners after — escalating only the cases that genuinely need the doctor's eyes.
 
 🔗 **Repository:** <https://github.com/Shawnchee/DA-Homies>
-🌐 **Live demo:** <https://consilium-tau.vercel.app/dashboard>
+🌐 **Live demo:** <https://consilium-tau.vercel.app>
 
 ---
 
@@ -31,7 +31,7 @@ All required documentation is checked into this repository in PDF format.
 | 🎤 **Pitch Deck** | [`Consilium Pitch Deck.pdf`](./Consilium%20Pitch%20Deck.pdf) | Hackathon pitch slides |
 | 🎥 **Pitch Video (10 min)** | [Google Drive link](https://drive.google.com/file/d/1XFIBHLVO8OItMsTh8jcMqsAVfZDE3XTE/view?usp=drive_link) | Recorded pitch + live product demonstration |
 | 💾 **Code Repository** | <https://github.com/Shawnchee/DA-Homies> | Full source code |
-| 🌐 **Live Deployment** | <https://consilium-tau.vercel.app/dashboard> | Hosted demo (Vercel) |
+| 🌐 **Live Deployment** | <https://consilium-tau.vercel.app> | Hosted demo (Vercel) |
 
 📁 **Full submission Drive folder:** <https://drive.google.com/drive/u/0/folders/160O04WT0iuOfyCdfYf1EiLhesZAOUw5k>
 
