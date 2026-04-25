@@ -359,7 +359,7 @@ consilium/
 │   ├── PatientCard.tsx           ← Schedule card + brief expansion
 │   ├── FollowUpQueue.tsx         ← Priority-sorted queue
 │   ├── EscalationCard.tsx        ← Hero modal — the demo moment
-│   ├── ConsultCapture.tsx        ← Voice/text input + GLM output cards
+│   ├── ConsultCapture.tsx        ← Voice (Deepgram) + photo + text input + Claude output cards
 │   ├── MetricsRow.tsx            ← Monthly KPI cards
 │   ├── DogCompanion.tsx          ← Three.js 3D dog (cursor tracking)
 │   └── PetPassport.tsx           ← Passport page component
@@ -388,92 +388,119 @@ consilium/
 ## 9. API Routes
 
 ### POST /api/triage
-Receives Telegram webhook, runs LangGraph triage graph, writes result to Supabase, triggers Realtime.
+Ad-hoc triage entry point used by tests and the dashboard's "what would Claude say" preview. The Telegram polling script + webhook route both bypass this and hit `lib/telegram-handler.handleOwnerMessage` directly so the multi-turn tool-call state machine is shared. The handler runs Claude (Sonnet 4.6) with the triage tool registry, writes the result to Supabase (which triggers Realtime on the dashboard), and replies to the owner via Telegram.
 
 ```typescript
-// app/api/triage/route.ts
+// app/api/triage/route.ts — one-shot, forces toolCallCount=1 so the model
+// commits to a decision even on ambiguous input.
 export async function POST(req: Request) {
-  const { message, chat_id, followup_id } = await req.json()
-
-  // Call Python LangGraph service (or embed via edge function)
-  const triage = await runTriageGraph({
-    owner_message: message,
-    followup_id,
-    thread_id: `followup_${followup_id}`
+  const { message } = parseTriageRequest(await req.json())
+  const result = await callGLM<TriageDecision>({
+    feature: "triage",
+    user: message,
+    context: { toolCallCount: 1 },
   })
-
-  // Write to Supabase — triggers Realtime on dashboard
-  await supabase.from("followups").update({
-    status: triage.decision,
-    glm_decision: triage.decision,
-    confidence: triage.confidence,
-    differentials: triage.differentials,
-    draft_response: triage.owner_reply_draft,
-    owner_message: message
-  }).eq("id", followup_id)
-
-  // Send Telegram response if ALL_CLEAR or MONITOR (auto)
-  if (triage.decision !== "ESCALATE") {
-    await sendTelegramMessage(chat_id, triage.owner_reply_draft)
-  }
-
-  return Response.json({ ok: true, decision: triage.decision })
+  return json<TriageResponse>({
+    decision: result.data.decision,
+    confidence: result.data.confidence,
+    differentials: result.data.differentials,
+    recommendedAction: result.data.recommendedAction,
+    ownerReplyDraft: result.data.ownerReplyDraft,
+    doctorSummary: result.data.doctorSummary,
+    source: result.source,
+  })
 }
 ```
 
 ### POST /api/consult
-Takes raw consultation notes, returns structured SOAP + billing + prescription + todos.
+Takes raw consultation notes (and optional `imageUrls[]` from Supabase Storage), returns structured SOAP + billing + prescription + todos via Claude Sonnet 4.6's `emit_consult` tool. The model may call `tavily_search` once mid-loop if a recommended drug needs a recall check.
 
 ```typescript
 export async function POST(req: Request) {
-  const { notes, patient_id } = await req.json()
-  const patient = await getPatient(patient_id)
+  const { patientId, notes, imageUrls } = parseConsultRequest(await req.json())
+  const patient = await resolvePatient(patientId)
 
-  const result = await callGLM({
-    system: CONSULT_EXTRACTION_PROMPT,
-    user: `Patient: ${patient.name}, ${patient.species}, ${patient.age}yo\nNotes: ${notes}\nBilling matrix: ${BILLING_MATRIX}`
+  const result = await callGLM<ConsultOutput>({
+    feature: "consult",
+    user: notes,
+    context: { patientName: patient.name, patientId },
+    images: imageUrls?.map((url) => ({ url })),  // multimodal: Claude vision
   })
 
-  const structured = JSON.parse(result)
+  // Best-effort persist — never fail the request if DB write errors.
+  if (hasSupabaseAdmin()) {
+    await db.from("visits").insert({
+      patient_id: patientId,
+      raw_notes: notes,
+      soap_note: soapToText(result.data.soap),
+      prescription: result.data.prescription,
+      billing_items: result.data.billing,
+      todo_list: result.data.todos,
+    })
+  }
 
-  // Save to Supabase
-  const { data } = await supabase.from("visits").insert({
-    patient_id,
-    raw_notes: notes,
-    soap_note: structured.soap,
-    prescription: structured.prescription,
-    billing_items: structured.billing_items,
-    todo_list: structured.todo_list
-  }).select().single()
-
-  return Response.json(data)
+  return json<ConsultResponse>({ visitId, output: result.data, source: result.source })
 }
 ```
 
 ### GET /api/brief?patient_id=xxx
-Returns GLM-generated pre-consult brief from historical notes.
+Returns Claude-generated pre-consult brief from historical notes. Routed to Haiku 4.5 (`ANTHROPIC_MODEL_BRIEF`) since the brief is short and time-sensitive.
 
 ```typescript
 export async function GET(req: Request) {
-  const patient_id = new URL(req.url).searchParams.get("patient_id")
+  const patientId = new URL(req.url).searchParams.get("patient_id")
+  const patient = await resolvePatient(patientId)
 
-  const visits = await supabase.from("visits")
-    .select("raw_notes, soap_note, visit_date, billing_items")
-    .eq("patient_id", patient_id)
-    .order("visit_date", { ascending: false })
-    .limit(10)
-
-  const brief = await callGLM({
-    system: BRIEF_PROMPT,
-    user: `Patient history:\n${visits.data.map(v => v.raw_notes).join("\n\n")}`
+  const result = await callGLM<Brief>({
+    feature: "brief",
+    user: `Patient: ${patient.name}, ${patient.species} ${patient.breed}, ${patient.age_years}yo. Owner: ${patient.owner_name}.`,
+    context: { patientName: patient.name, patientId },
   })
 
-  return Response.json({ brief })
+  return json<GetBriefResponse>({ patientId, brief: result.data, source: result.source })
+}
+```
+
+### POST /api/transcribe
+Multipart `audio` field → Deepgram nova-3 → `{ transcript, confidence }`. Used by the consult page MediaRecorder. Detects language automatically (Bahasa / English / Mandarin code-switching is common in SEA clinics).
+
+```typescript
+export async function POST(req: Request) {
+  const form = await req.formData()
+  const file = form.get("audio") as Blob
+
+  const dgRes = await fetch(`https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&detect_language=true`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${ENV.deepgram.apiKey}`,
+      "Content-Type": file.type || "audio/webm",
+    },
+    body: await file.arrayBuffer(),
+  })
+  const body = await dgRes.json()
+  const alt = body.results?.channels?.[0]?.alternatives?.[0]
+  return json({ transcript: alt?.transcript ?? "", confidence: alt?.confidence ?? null })
+}
+```
+
+### POST /api/upload
+Multipart `files[]` + `bucket` field → Supabase Storage (consult-photos | owner-photos) → `{ uploads: [{ url|base64, mediaType }] }`. Falls back to inline base64 when admin credentials or buckets are missing — Claude vision works either way.
+
+```typescript
+export async function POST(req: Request) {
+  const form = await req.formData()
+  const bucket = form.get("bucket") as PhotoBucket
+  const files = form.getAll("files").filter((f): f is File => f instanceof File)
+
+  const uploads = await Promise.all(
+    files.map(async (f) => uploadPhotoBytes(bucket, await f.arrayBuffer(), f.type))
+  )
+  return json({ uploads })
 }
 ```
 
 ### POST /api/corrections
-Logs doctor approval/rejection for the feedback loop.
+Logs doctor approval/rejection for the feedback loop. Column name `glm_output` is preserved across the schema for migration compat — the *value* is now a Claude output.
 
 ```typescript
 export async function POST(req: Request) {
@@ -562,9 +589,11 @@ storage.buckets:
   consult-photos  (public)  ← vet-uploaded media during F2 consult capture
   owner-photos    (public)  ← owner-sent photos forwarded by the Telegram bot
 
--- LangGraph checkpointer tables (auto-created by checkpointer.setup())
--- checkpoints, checkpoint_blobs, checkpoint_writes
--- These appear automatically in your Supabase DB — do not manually create
+-- LangGraph checkpointer tables (DEFERRED — finals only).
+-- When the Python sidecar lands, checkpointer.setup() will create
+-- checkpoints, checkpoint_blobs, checkpoint_writes automatically.
+-- Today's TS tool-use loop (lib/llm.ts) reads conversation state directly
+-- from the followups.conversation jsonb column — no checkpointer needed.
 ```
 
 **Enable Realtime on followups table:**
@@ -579,54 +608,86 @@ ALTER TABLE followups REPLICA IDENTITY FULL;
 
 > Note: live prompts are in `lib/prompts.ts`. The shapes shown here are the structured outputs delivered via `emit_brief` / `emit_consult` / `emit_decision` tool calls — not free-text JSON. The model's tool-use loop in `lib/llm.ts` extracts `input` from those tool calls directly, so JSON-parse failures are impossible.
 
-### F1 — Pre-Consult Brief
+### F1 — Pre-Consult Brief (Haiku 4.5)
+**Tools exposed:** `[emit_brief]` — no web search, no clarifying tools. One forced tool call, one round trip.
 ```
 SYSTEM:
-You are a veterinary clinical assistant. Given historical visit notes,
-generate a structured pre-consultation brief in exactly this format:
-Last visit: [date — reason — outcome]
-Chronic flags: [conditions or "None"]
-Compliance: [owner behaviour patterns]
-Pending: [overdue items]
-Probe today: [what to check, max 15 words]
+You are a veterinary assistant generating a concise 5-line patient brief
+for a doctor about to see the pet in the next minute.
+
+Call the emit_brief tool exactly once with these fields, each ≤ 20 words:
+- lastVisit, chronic, compliance, pending, probe
+
+Patient, owner, and prior-visit context are in the user message.
+Do not invent history that is not supplied.
 
 USER:
 Patient: {name}, {species}, {breed}, {age}yo, {sex}
 History: {concatenated_raw_notes}
 ```
 
-### F2 — Consultation Extraction
+### F2 — Consultation Extraction (Sonnet 4.6)
+**Tools exposed:** `[tavily_search, emit_consult]` — model loops, may call Tavily once for drug-recall check, then calls emit_consult to commit.
+**Multimodal:** wound / lab / X-ray photos arrive as image content blocks alongside the text.
 ```
 SYSTEM:
-You are a veterinary scribe. Extract structured data from consultation notes.
-Return valid JSON only. No markdown, no explanation.
+You are a veterinary assistant converting a doctor's free-text consult notes
+(and any attached photos of the patient, wounds, or imaging) into a structured
+record for the clinic system.
 
-Schema: { soap: {S,O,A,P}, prescription: [{drug,dose,duration,quantity}],
-billing_items: [{item, price_rm, in_notes}], todo_list: [{task, assignee}],
-followup_days: number }
+Call emit_consult once when ready. Schema:
+- soap: { S, O, A, P }
+- prescription: [{ drug, dose, dur, qty }]
+- billing: [{ item, price, flagged, note }] — flagged=true when mentioned
+  in notes but missing from the bill
+- todos: [{ task, who }]
 
-Flag billing items mentioned in notes but typically unbilled for this diagnosis.
+Tavily guardrail: only call tavily_search for drug-recall verification or
+unfamiliar protocols. Routine items use the billing matrix below. Max 1 call.
+
+Vision guardrail: describe what you observe (location, colour, swelling,
+discharge). Do NOT diagnose from images alone — flag for vet review.
 
 USER:
 Patient: {name}, {species}, {age}yo
 Notes: {raw_notes}
 Billing matrix: {billing_matrix_json}
+[+ image content blocks for any attached photo URLs]
 ```
 
-### F3 — Triage Decision
+### F3 — Triage Decision (Sonnet 4.6)
+**Tools exposed:** `[tavily_search, request_photo, request_temperature, request_appetite_timeline, request_medication_compliance, schedule_doctor_callback, emit_decision]`.
+**Loop:** model picks ONE clarifying tool if ambiguous, server breaks loop and sends the prompt to the owner. Next owner reply re-enters with `toolCallCount=1`, after which the model MUST call `emit_decision`.
+**Multimodal:** owner-attached photos arrive as image content blocks.
 ```
 SYSTEM:
-You are a veterinary triage assistant.
-Classify as ALL_CLEAR, MONITOR, or ESCALATE.
-Return JSON only: { decision, confidence, differentials: [{cause, probability}],
-recommended_action, owner_reply_draft, doctor_summary }
+You are a veterinary triage assistant. Decide escalate / monitor / clear.
 
-Clinic-specific corrections:
+You have THREE tool kinds:
+  1. Clarifying (request_*) — use ONE only if ambiguous, max ONCE per case.
+     Each call carries { args, reasoning, ownerPrompt }.
+  2. tavily_search — escalations or unfamiliar drugs only.
+  3. emit_decision — call EXACTLY once when ready, with full schema:
+     { decision, confidence, differentials[], recommendedAction,
+       ownerReplyDraft, doctorSummary, reasoning }
+
+Rules:
+- Escalate on: blood, swelling, fever (>39.5°C), lethargy >24h, sudden
+  refusal to eat with no water, seizure, collapse, visible wound breakdown.
+- Monitor on: slightly soft stool, mild scratching, partial appetite,
+  mild lethargy <24h.
+- Clear on: normal appetite + energy, owner says "fine / great / back to normal".
+
+If context.toolCallCount >= 1 you have already used your one clarifying turn —
+emit_decision now even with imperfect information.
+
+Clinic-specific corrections (overrides default rules on similar cases):
 {few_shot_corrections_from_supabase}
 
 USER:
 Patient: {species}, {age}yo, {procedure}, Day {days_post_visit}
 Owner message: "{telegram_reply}"
+[+ image content blocks for any attached photo URLs]
 ```
 
 ---
@@ -797,7 +858,7 @@ The ambiguous row is your proof. Keyword matching collapses on natural human lan
 | Zi Qian | Software Engineer | Next.js setup, all API routes (`/api/*`), Supabase schema + seed, Telegram bot (grammY), Supabase Realtime wiring, Vercel deploy |
 | Yu Han | Data Analyst | 150 synthetic patients (`supabase/seed.sql`), 50 Telegram reply scenarios, validation accuracy table, dashboard metric simulations |
 | Shawn | Frontend + PM | All dashboard screens, escalation modal, patient card + brief UI, dog companion component, pitch deck, demo script rehearsal |
-| Harrison | Domain + QA | Billing matrix (diagnosis → billable items), realistic SOAP note scenarios for synthetic data, medical QA on all GLM outputs, pet passport content |
+| Harrison | Domain + QA | Billing matrix (diagnosis → billable items), realistic SOAP note scenarios for synthetic data, medical QA on all Claude outputs (SOAP, Rx, triage), pet passport content |
 
 ---
 
@@ -808,11 +869,11 @@ Day 1 — 08:30  ALL: Repo created, Supabase project up, env vars shared
 Day 1 — 09:00  Brandon: Claude responding via lib/llm.ts, basic prompt working
 Day 1 — 09:00  Zi Qian: Next.js scaffold, Supabase schema deployed, 10 patients seeded
 Day 1 — 09:00  Harrison: Billing matrix complete (10 diagnoses × items)
-Day 1 — 12:00  Brandon: F1 brief + F2 extraction prompts returning correct JSON
-Day 1 — 12:00  Zi Qian: /api/brief and /api/consult routes working
+Day 1 — 12:00  Brandon: F1 brief + F2 extraction returning correct emit_brief / emit_consult tool calls
+Day 1 — 12:00  Zi Qian: /api/brief, /api/consult, /api/transcribe, /api/upload routes working
 Day 1 — 12:00  Shawn: Dashboard layout + patient cards built
-Day 1 — 15:00  Brandon: LangGraph triage graph working end-to-end
-Day 1 — 15:00  Zi Qian: /api/triage route + grammY bot receiving Telegram messages
+Day 1 — 15:00  Brandon: triage tool-use loop working end-to-end (clarifying tool → owner reply → emit_decision)
+Day 1 — 15:00  Zi Qian: /api/triage route + grammY bot receiving Telegram text + photos
 Day 1 — 15:00  Yu Han: All 150 patients + 50 Telegram scenarios seeded
 Day 1 — 18:00  Shawn: Escalation modal + Supabase Realtime connected
 Day 1 — 21:00  INTEGRATION: Telegram message → triage → dashboard escalation card live
@@ -836,7 +897,7 @@ Day 2 — 15:00  Code freeze. Pitch deck final. Demo script locked.
 | Decision intelligence, not automation | F3 triage makes a clinical decision with confidence scoring — no rule engine replicates this |
 | Unstructured + structured data | Voice notes + historical free text + billing records processed together |
 | Context-aware reasoning | Patient age, species, procedure, post-op day all inform triage confidence |
-| Explain decisions clearly | Every GLM output shows reasoning — differentials, confidence %, recommended action |
+| Explain decisions clearly | Every Claude output ships a reasoning field — differentials, confidence %, recommended action — surfaced verbatim in the escalation card |
 | LLM non-removable | Strip Claude → Telegram bot says "please call us." No brief, no billing recovery, no triage. Dead. |
 | Quantifiable impact | RM 10,000/month billing recovery + 3 hrs/day saved + complications caught. All simulatable. |
 | Clear target user | Solo vet clinics in Malaysia. ~3,000 clinics. Specific, real, underserved. |
