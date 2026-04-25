@@ -16,6 +16,7 @@
  */
 
 import { callGLM } from "./glm";
+import { callTriageAgent, isAgentEnabled } from "./agent";
 import { hasSupabaseAdmin } from "./env";
 import { getSupabaseServer } from "./supabase";
 import type {
@@ -24,6 +25,11 @@ import type {
   TriageToolCall,
 } from "./glm-fixtures";
 import type { ConversationTurn, FollowUpLevel } from "./types";
+
+// Single-clinic demo — the agent's PostgresStore namespace is
+// ("consultations", clinic_id, patient_id), so this string just needs
+// to be stable across writes and reads.
+const DEMO_CLINIC_ID = "pawsclinic_kl";
 
 export interface HandleOwnerMessageResult {
   reply: string;
@@ -37,6 +43,7 @@ type FollowupRowMini = {
   id: string;
   conversation: unknown;
   tool_call_count: number | null;
+  visits: { patient_id: string; patients: { name: string | null } | null } | null;
 };
 
 const UNLINKED_REPLY = (chatId: string) =>
@@ -122,7 +129,9 @@ export async function handleOwnerMessage(
       const db = getSupabaseServer();
       const { data } = await db
         .from("followups")
-        .select("id, conversation, tool_call_count")
+        .select(
+          "id, conversation, tool_call_count, visits!inner(patient_id, patients!inner(name))",
+        )
         .eq("telegram_chat_id", chatId)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -142,6 +151,8 @@ export async function handleOwnerMessage(
   const conv = parseConversation(row.conversation);
   const toolCallCount = row.tool_call_count ?? 0;
   const turnIndex = conv.length + 1;
+  const patientId = row.visits?.patient_id ?? null;
+  const patientName = row.visits?.patients?.name ?? "your pet";
   logInbound(chatId, text, turnIndex);
 
   const ownerTurn: ConversationTurn = {
@@ -150,18 +161,15 @@ export async function handleOwnerMessage(
     ts: nowIso(),
   };
 
-  const fixtureContext = {
+  const result = await runTriage({
+    text,
+    chatId,
+    followupId: row.id,
+    patientId,
+    patientName,
     toolCallCount,
-    conversationText: conversationText(conv),
-    patientName: (await fetchPatientName(row.id)) ?? "your pet",
-  };
-
-  const glmResult = await callGLM<TriageFixtureOutput>({
-    feature: "triage",
-    user: text,
-    context: fixtureContext,
+    priorConversation: conv,
   });
-  const result = glmResult.data;
 
   /* ─── tool-call branch ────────────────────────────────────────────── */
   if (result.kind === "tool_call") {
@@ -241,21 +249,52 @@ export async function handleOwnerMessage(
   };
 }
 
-/* ─── helpers ─────────────────────────────────────────────────────────── */
+/* ─── triage dispatcher ───────────────────────────────────────────────── */
 
-async function fetchPatientName(followupId: string): Promise<string | null> {
-  if (!hasSupabaseAdmin()) return null;
-  try {
-    const db = getSupabaseServer();
-    const { data } = await db
-      .from("followups")
-      .select("visits!inner(patients!inner(name))")
-      .eq("id", followupId)
-      .maybeSingle();
-    const visits = (data as { visits?: { patients?: { name?: string } } } | null)
-      ?.visits;
-    return visits?.patients?.name ?? null;
-  } catch {
-    return null;
+interface RunTriageParams {
+  text: string;
+  chatId: string;
+  followupId: string;
+  patientId: string | null;
+  patientName: string;
+  toolCallCount: number;
+  priorConversation: ConversationTurn[];
+}
+
+/**
+ * Pick the LangGraph sidecar when LANGGRAPH_SERVICE_URL is set; fall back
+ * to the in-process callGLM path on any sidecar error so the demo keeps
+ * working even if the Python service is down.
+ */
+async function runTriage(p: RunTriageParams): Promise<TriageFixtureOutput> {
+  if (isAgentEnabled() && p.patientId) {
+    try {
+      return await callTriageAgent({
+        followupId: p.followupId,
+        patientId: p.patientId,
+        clinicId: DEMO_CLINIC_ID,
+        chatId: p.chatId,
+        text: p.text,
+        patientName: p.patientName,
+        toolCallCount: p.toolCallCount,
+        priorConversation: p.priorConversation,
+      });
+    } catch (err) {
+      console.warn(
+        "[telegram-handler] sidecar failed, falling back to mock GLM:",
+        err,
+      );
+    }
   }
+
+  const glmResult = await callGLM<TriageFixtureOutput>({
+    feature: "triage",
+    user: p.text,
+    context: {
+      toolCallCount: p.toolCallCount,
+      conversationText: conversationText(p.priorConversation),
+      patientName: p.patientName,
+    },
+  });
+  return glmResult.data;
 }
