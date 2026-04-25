@@ -138,6 +138,12 @@ async function realPath<T>(params: CallGLMParams): Promise<CallGLMResult<T>> {
   const tools = registryFor(params.feature);
   const toolSpecs = tools.map((t) => t.spec);
 
+  // For features whose only tool is the emit_* output (currently brief),
+  // force the model to call it. Otherwise Sonnet/Haiku will sometimes
+  // return free-text "I need more info..." instead of best-effort emitting.
+  const emitOnly =
+    tools.length === 1 && tools[0].handling === "emit" ? tools[0].spec.name : null;
+
   const system = buildSystem(params);
   const userContent = buildUserContent(params);
 
@@ -158,6 +164,9 @@ async function realPath<T>(params: CallGLMParams): Promise<CallGLMResult<T>> {
       max_tokens: MAX_TOKENS,
       system,
       tools: toolSpecs as Anthropic.Tool[],
+      tool_choice: emitOnly
+        ? ({ type: "tool", name: emitOnly } as Anthropic.ToolChoice)
+        : undefined,
       messages: messages as Anthropic.MessageParam[],
     })) as Anthropic.Message;
     lastResponse = response;

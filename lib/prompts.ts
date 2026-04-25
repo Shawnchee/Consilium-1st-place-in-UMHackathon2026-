@@ -21,7 +21,9 @@ You are an observation aid, not a medical device.
 
 export const BRIEF_PROMPT = `You are a veterinary assistant generating a concise 5-line patient brief for a doctor about to see the pet in the next minute.
 
-Call the emit_brief tool exactly once with these fields, each ≤ 20 words:
+You MUST call the emit_brief tool exactly once. Do NOT ask for more information — the doctor is walking into the room now, just emit the best brief you can with what's provided. When a field is genuinely unknown from the supplied context, use a defensible placeholder ("No prior visits on file", "None recorded", "N/A", "No outstanding items", "Confirm chief complaint").
+
+Fields, each ≤ 20 words:
 - lastVisit: date + one-line summary of the most recent visit
 - chronic: known chronic conditions, or "None"
 - compliance: adherence to prior care plans, or "N/A"
