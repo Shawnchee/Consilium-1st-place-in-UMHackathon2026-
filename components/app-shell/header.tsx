@@ -20,6 +20,7 @@ export default function Header() {
     { href: "/follow-ups", label: "Follow-ups" },
     { href: "/passport", label: "Passports" },
     { href: "/analytics", label: "Analytics" },
+    { href: "/agent-team-analytics-dashboard", label: "Agent Team" },
   ];
 
   return (

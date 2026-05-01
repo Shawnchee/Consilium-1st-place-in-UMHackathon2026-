@@ -321,7 +321,7 @@ function buildSystem(params: CallGLMParams): string {
  * exfiltrate via Anthropic's outbound fetch (SSRF) or have the model react
  * to malicious image content from arbitrary hosts.
  */
-function isAllowedImageUrl(rawUrl: string): boolean {
+export function isAllowedImageUrl(rawUrl: string): boolean {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
