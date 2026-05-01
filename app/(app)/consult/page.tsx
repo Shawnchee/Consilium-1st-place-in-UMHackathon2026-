@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ReactNode, Suspense, useMemo, useRef, useState } from "react";
+import { ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Icon, Pill } from "@/components/atoms";
 import { PageHeader, PetAvatar } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
@@ -764,29 +764,38 @@ function ConsultContent() {
         }
       }
 
-      // Drive the SSE stream — the dashboard hook handles the lifecycle
-      // events. We don't need to await events here; output is derived
-      // reactively from stream.result.
-      await stream.start({
+      // Drive the SSE stream and use the terminal result returned by
+      // start() — reading stream.result here is unsafe (closure-captured
+      // pre-reset value). The hook also writes the same result to state
+      // for reactive rendering.
+      const terminal = await stream.start({
         patientId: patient.id,
         notes,
         imageUrls,
       });
-      const summary = stream.result?.summary;
-      if (summary) {
-        const flagged = summary.billing
+      if (terminal) {
+        const flagged = terminal.summary.billing
           .filter((b) => b.flagged)
           .reduce((a, b) => a + b.price, 0);
         flashToast(
           flagged > 0
-            ? `Extracted · ${summary.billing.length} billing items · RM ${flagged} recoverable`
-            : `Extracted · SOAP + ${summary.prescription.length} rx + ${summary.todos.length} todos`,
+            ? `Extracted · ${terminal.summary.billing.length} billing items · RM ${flagged} recoverable`
+            : `Extracted · SOAP + ${terminal.summary.prescription.length} rx + ${terminal.summary.todos.length} todos`,
         );
       }
     } catch (err) {
       flashToast(err instanceof Error ? err.message : "Generation failed");
     }
   };
+
+  // Surface stream-channel errors (mid-stream Tavily/orchestrator failure,
+  // network drop) to the toast even when the pipeline panel is hidden.
+  // Without this, a hidden-panel doctor sees nothing — generating just
+  // stops. The catch block in generate() only fires for thrown rejections;
+  // SSE error events arrive asynchronously and only set stream.error.
+  useEffect(() => {
+    if (stream.error) flashToast(`Pipeline error: ${stream.error}`);
+  }, [stream.error, flashToast]);
 
   const stopMicTracks = () => {
     if (mediaStream.current) {
@@ -1400,7 +1409,7 @@ function ConsultContent() {
             </Card>
           )}
 
-          {status === "generating" && (
+          {status === "generating" && !showPipeline && (
             <Card
               style={{
                 padding: "44px 28px",
@@ -1427,6 +1436,21 @@ function ConsultContent() {
                 <GeneratingMarquee />
               </div>
             </Card>
+          )}
+          {status === "generating" && showPipeline && (
+            // Pipeline panel above is already showing live agent state —
+            // a quiet placeholder here keeps the right column from
+            // looking empty without duplicating "we're working" copy.
+            <div
+              style={{
+                padding: "20px 24px",
+                fontSize: 12.5,
+                color: C.muted,
+                textAlign: "center",
+              }}
+            >
+              Synthesizing summary — see the pipeline above for live progress.
+            </div>
           )}
 
           {status === "ready" && output && (

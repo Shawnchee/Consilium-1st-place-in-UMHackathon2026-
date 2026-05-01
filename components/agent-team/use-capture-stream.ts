@@ -50,7 +50,15 @@ export interface CaptureStreamState {
 }
 
 export interface CaptureStreamControls {
-  start: (input: CaptureStreamInput) => Promise<void>;
+  /**
+   * Start a streaming capture. Resolves with the terminal SessionCaptureResult
+   * when the orchestrator emits session_completed; resolves with null when
+   * the stream errored, was aborted, or finished without a session_completed
+   * event. Callers should prefer this return value over reading
+   * `stream.result` immediately after the await — the React state update
+   * from `setResult` may not have flushed yet.
+   */
+  start: (input: CaptureStreamInput) => Promise<SessionCaptureResult | null>;
   abort: () => void;
   reset: () => void;
 }
@@ -135,12 +143,17 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
   }, []);
 
   const start = useCallback(
-    async (input: CaptureStreamInput) => {
-      if (running) return;
+    async (input: CaptureStreamInput): Promise<SessionCaptureResult | null> => {
+      if (running) return null;
       reset();
       setRunning(true);
       const ctrl = new AbortController();
       abortRef.current = ctrl;
+
+      // Capture the terminal result locally as well as in state. Caller
+      // gets it via the return value (synchronous), state lags by one
+      // React commit. Both paths see the same payload.
+      let terminalResult: SessionCaptureResult | null = null;
 
       try {
         const res = await fetch("/api/consult/capture/stream", {
@@ -170,6 +183,9 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
               if (!json) continue;
               try {
                 const evt = JSON.parse(json) as PipelineEvent;
+                if (evt.type === "session_completed") {
+                  terminalResult = evt.result;
+                }
                 applyEvent(evt);
               } catch {
                 // ignore unparseable
@@ -178,12 +194,14 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
           }
         }
       } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
+        if (err instanceof Error && err.name === "AbortError") return null;
         setError(err instanceof Error ? err.message : String(err));
+        return null;
       } finally {
         setRunning(false);
         abortRef.current = null;
       }
+      return terminalResult;
     },
     [running, reset, applyEvent],
   );

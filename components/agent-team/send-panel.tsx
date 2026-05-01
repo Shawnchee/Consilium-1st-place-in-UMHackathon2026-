@@ -10,7 +10,7 @@
  * edits within the same run.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CLINIC } from "@/lib/clinic";
 import { BORDER_HAIRLINE, C, FONT_MONO, SHADOW_CARD } from "@/lib/tokens";
 import type { SessionCaptureResult } from "@/lib/agents/sub-agents/types";
@@ -42,16 +42,35 @@ export function SendPanel({
   const [bodyDraft, setBodyDraft] = useState("");
   const [aftercareDraft, setAftercareDraft] = useState("");
   const [status, setStatus] = useState<SendStatus>({ kind: "idle" });
+  // Doctor has typed in the body/aftercare since the last reset. Used to
+  // warn before clobbering edits when a fresh pipeline run lands.
+  const [dirty, setDirty] = useState(false);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
   const lastResultId = useRef<string | null>(null);
 
-  // Reset drafts when a new pipeline run lands; preserve mid-edit state
-  // within the same run.
-  if (result && result.visitId !== lastResultId.current) {
+  // Effect-driven reset (avoids the set-state-during-render anti-pattern).
+  // Fires only when result.visitId changes — preserves mid-edit work
+  // within the same run, replaces drafts cleanly when a new run lands.
+  useEffect(() => {
+    if (!result) return;
+    if (result.visitId === lastResultId.current) return;
+    const wasDirty = dirty && lastResultId.current !== null;
     lastResultId.current = result.visitId;
     setBodyDraft(result.summary.ownerMessage.body.replace(/\{clinic\}/g, CLINIC.name));
     setAftercareDraft(result.summary.ownerMessage.aftercare.join("\n"));
     setStatus({ kind: "idle" });
-  }
+    setDirty(false);
+    setResetNotice(
+      wasDirty
+        ? "Pipeline re-ran — draft replaced with the new orchestrator output. Your edits were discarded."
+        : null,
+    );
+    // Auto-clear the notice after 8s so it doesn't linger.
+    if (wasDirty) {
+      const t = setTimeout(() => setResetNotice(null), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [result, dirty]);
 
   if (!result) {
     return (
@@ -133,11 +152,31 @@ export function SendPanel({
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {resetNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: C.amberLight,
+              border: `1px solid ${C.amberBorder}`,
+              color: C.amber,
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            {resetNotice}
+          </div>
+        )}
         <div>
           <SoapLabel>Owner message</SoapLabel>
           <textarea
             value={bodyDraft}
-            onChange={(e) => setBodyDraft(e.target.value)}
+            onChange={(e) => {
+              setBodyDraft(e.target.value);
+              setDirty(true);
+            }}
             disabled={sending}
             rows={5}
             style={textareaStyle}
@@ -157,7 +196,10 @@ export function SendPanel({
           <SoapLabel>Aftercare bullets (one per line)</SoapLabel>
           <textarea
             value={aftercareDraft}
-            onChange={(e) => setAftercareDraft(e.target.value)}
+            onChange={(e) => {
+              setAftercareDraft(e.target.value);
+              setDirty(true);
+            }}
             disabled={sending}
             rows={4}
             style={textareaStyle}
