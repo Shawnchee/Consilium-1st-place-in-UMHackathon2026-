@@ -112,6 +112,7 @@ export async function POST(req: Request) {
       visitId,
       session: captured.session,
       summary: captured.summary,
+      orchestratorMeta: captured.orchestratorMeta,
       meta: {
         totalLatencyMs,
         parallelAgentsLatencyMs: captured.meta.parallelAgentsLatencyMs,

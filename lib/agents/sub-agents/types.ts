@@ -33,6 +33,15 @@ export interface SessionInput {
   diagnosisHint?: string;
 }
 
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  /** Tokens written into the cache on this call (full price). */
+  cacheCreationTokens: number;
+  /** Tokens read from cache (10% input price). */
+  cacheReadTokens: number;
+}
+
 export interface SubAgentMeta {
   agent: string;
   model: string;
@@ -40,6 +49,10 @@ export interface SubAgentMeta {
   source: "mock" | "glm";
   toolCalls?: number;
   tavilyUsed?: boolean;
+  /** Per-call token usage rolled up across all loop iterations. */
+  usage?: TokenUsage;
+  /** Optional Tavily query summaries for the dashboard feed. */
+  tavilyQueries?: { query: string; reason: string; cached: boolean; results: number }[];
 }
 
 export interface VoiceCaptureOutput {
@@ -112,6 +125,8 @@ export interface SessionCaptureResult {
   visitId: string;
   session: SessionAggregate;
   summary: SessionSummaryOutput;
+  /** Orchestrator (Sonnet) metadata — usage, latency, source. */
+  orchestratorMeta?: SubAgentMeta;
   meta: {
     totalLatencyMs: number;
     parallelAgentsLatencyMs: number;

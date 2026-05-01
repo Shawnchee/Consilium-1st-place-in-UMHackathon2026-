@@ -26,6 +26,7 @@ import type {
   SessionInput,
   SessionSummaryOutput,
   SubAgentMeta,
+  TokenUsage,
 } from "./sub-agents/types";
 
 const ORCHESTRATOR_MODEL = ENV.anthropic.modelConsult; // Sonnet 4.6
@@ -238,17 +239,36 @@ async function runOrchestrator(
   const c = getClient();
   const userMessage = buildOrchestratorUserMessage(input, agg);
 
+  // Cache the orchestrator's system + emit-tool spec — both static across
+  // every consult. Only the user message (sub-agent JSON) varies.
+  const cachedSystem: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: SYSTEM_PROMPT,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+  const cachedTools = [
+    { ...EMIT_SUMMARY_TOOL, cache_control: { type: "ephemeral" } },
+  ] as Anthropic.Tool[];
+
   const response = (await c.messages.create({
     model: ORCHESTRATOR_MODEL,
     max_tokens: MAX_TOKENS,
-    system: SYSTEM_PROMPT,
-    tools: [EMIT_SUMMARY_TOOL] as Anthropic.Tool[],
+    system: cachedSystem,
+    tools: cachedTools,
     tool_choice: {
       type: "tool",
       name: EMIT_SUMMARY_TOOL.name,
     } as Anthropic.ToolChoice,
     messages: [{ role: "user", content: userMessage }],
   })) as Anthropic.Message;
+  const usage: TokenUsage = {
+    inputTokens: response.usage?.input_tokens ?? 0,
+    outputTokens: response.usage?.output_tokens ?? 0,
+    cacheCreationTokens: response.usage?.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: response.usage?.cache_read_input_tokens ?? 0,
+  };
 
   type Block = { type: string; [k: string]: unknown };
   const blocks = response.content as unknown as Block[];
@@ -264,6 +284,7 @@ async function runOrchestrator(
         model: ORCHESTRATOR_MODEL,
         latencyMs: Date.now() - startedAt,
         source: "glm",
+        usage,
       },
     };
   }
@@ -275,6 +296,7 @@ async function runOrchestrator(
       model: ORCHESTRATOR_MODEL,
       latencyMs: Date.now() - startedAt,
       source: "glm",
+      usage,
     },
   };
 }
@@ -309,11 +331,62 @@ function buildOrchestratorUserMessage(
 export interface CaptureSessionResult {
   session: SessionAggregate;
   summary: SessionSummaryOutput;
+  orchestratorMeta: SubAgentMeta;
   meta: {
     parallelAgentsLatencyMs: number;
     orchestratorLatencyMs: number;
     source: "mock" | "glm";
   };
+}
+
+export type SubAgentName =
+  | "voice"
+  | "text"
+  | "prescription"
+  | "billing"
+  | "todos";
+
+/**
+ * Lifecycle events emitted during captureSession. The dashboard SSE
+ * endpoint forwards these to the browser so judges see the parallel
+ * fan-out, Tavily lookups, and orchestrator step happen live.
+ */
+export type CaptureEvent =
+  | { type: "session_started"; ts: number; patientName: string }
+  | { type: "agent_started"; ts: number; agent: SubAgentName }
+  | {
+      type: "agent_completed";
+      ts: number;
+      agent: SubAgentName;
+      meta: SubAgentMeta;
+      data: unknown;
+    }
+  | { type: "agent_failed"; ts: number; agent: SubAgentName; error: string }
+  | {
+      type: "tavily_called";
+      ts: number;
+      agent: SubAgentName;
+      query: string;
+      reason: string;
+      cached: boolean;
+      results: number;
+    }
+  | { type: "fanout_completed"; ts: number; latencyMs: number }
+  | { type: "orchestrator_started"; ts: number }
+  | {
+      type: "orchestrator_completed";
+      ts: number;
+      meta: SubAgentMeta;
+      summary: SessionSummaryOutput;
+    }
+  | { type: "session_completed"; ts: number; result: CaptureSessionResult };
+
+export interface CaptureSessionOptions {
+  /**
+   * Lifecycle event sink. Errors thrown by the callback are swallowed so
+   * a misbehaving listener can't tank the consult.
+   */
+  onEvent?: (event: CaptureEvent) => void;
 }
 
 /**
@@ -324,32 +397,109 @@ export interface CaptureSessionResult {
  */
 export async function captureSession(
   input: SessionInput,
+  opts: CaptureSessionOptions = {},
 ): Promise<CaptureSessionResult> {
+  const emit = (e: CaptureEvent) => {
+    try {
+      opts.onEvent?.(e);
+    } catch (err) {
+      console.warn("[orchestrator] onEvent threw, ignoring", err);
+    }
+  };
+
+  emit({
+    type: "session_started",
+    ts: Date.now(),
+    patientName: input.patientName,
+  });
+
   const fanOutStart = Date.now();
 
+  const runOne = async <T>(
+    name: SubAgentName,
+    fn: () => Promise<{ data: T; meta: SubAgentMeta }>,
+  ) => {
+    emit({ type: "agent_started", ts: Date.now(), agent: name });
+    const out = await fn();
+    out.meta.tavilyQueries?.forEach((q) =>
+      emit({
+        type: "tavily_called",
+        ts: Date.now(),
+        agent: name,
+        query: q.query,
+        reason: q.reason,
+        cached: q.cached,
+        results: q.results,
+      }),
+    );
+    emit({
+      type: "agent_completed",
+      ts: Date.now(),
+      agent: name,
+      meta: out.meta,
+      data: out.data,
+    });
+    return out;
+  };
+
   const [voiceR, textR, rxR, billR, todosR] = await Promise.allSettled([
-    runVoiceAgent(input),
-    runTextAgent(input),
-    runPrescriptionAgent(input),
-    runBillingAgent(input),
-    runTodosAgent(input),
+    runOne("voice", () => runVoiceAgent(input)),
+    runOne("text", () => runTextAgent(input)),
+    runOne("prescription", () => runPrescriptionAgent(input)),
+    runOne("billing", () => runBillingAgent(input)),
+    runOne("todos", () => runTodosAgent(input)),
   ]);
 
   const aggregate: SessionAggregate = {};
-  if (voiceR.status === "fulfilled") aggregate.voice = { data: voiceR.value.data, meta: voiceR.value.meta };
-  else console.warn("[orchestrator] voice sub-agent failed:", voiceR.reason);
-  if (textR.status === "fulfilled") aggregate.text = { data: textR.value.data, meta: textR.value.meta };
-  else console.warn("[orchestrator] text sub-agent failed:", textR.reason);
-  if (rxR.status === "fulfilled") aggregate.prescription = { data: rxR.value.data, meta: rxR.value.meta };
-  else console.warn("[orchestrator] prescription sub-agent failed:", rxR.reason);
-  if (billR.status === "fulfilled") aggregate.billing = { data: billR.value.data, meta: billR.value.meta };
-  else console.warn("[orchestrator] billing sub-agent failed:", billR.reason);
-  if (todosR.status === "fulfilled") aggregate.todos = { data: todosR.value.data, meta: todosR.value.meta };
-  else console.warn("[orchestrator] todos sub-agent failed:", todosR.reason);
+  const settle = <K extends SubAgentName, V>(
+    key: K,
+    name: SubAgentName,
+    r: PromiseSettledResult<{ data: V; meta: SubAgentMeta }>,
+    setter: (data: V, meta: SubAgentMeta) => void,
+  ) => {
+    if (r.status === "fulfilled") setter(r.value.data, r.value.meta);
+    else {
+      console.warn(`[orchestrator] ${key} sub-agent failed:`, r.reason);
+      emit({
+        type: "agent_failed",
+        ts: Date.now(),
+        agent: name,
+        error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+      });
+    }
+  };
+
+  settle("voice", "voice", voiceR, (data, meta) => {
+    aggregate.voice = { data, meta };
+  });
+  settle("text", "text", textR, (data, meta) => {
+    aggregate.text = { data, meta };
+  });
+  settle("prescription", "prescription", rxR, (data, meta) => {
+    aggregate.prescription = { data, meta };
+  });
+  settle("billing", "billing", billR, (data, meta) => {
+    aggregate.billing = { data, meta };
+  });
+  settle("todos", "todos", todosR, (data, meta) => {
+    aggregate.todos = { data, meta };
+  });
 
   const fanOutLatencyMs = Date.now() - fanOutStart;
+  emit({
+    type: "fanout_completed",
+    ts: Date.now(),
+    latencyMs: fanOutLatencyMs,
+  });
 
+  emit({ type: "orchestrator_started", ts: Date.now() });
   const { summary, meta: orchMeta } = await runOrchestrator(input, aggregate);
+  emit({
+    type: "orchestrator_completed",
+    ts: Date.now(),
+    meta: orchMeta,
+    summary,
+  });
 
   // Single source rollup: if everything was mock, label the whole thing mock.
   const allMock =
@@ -357,13 +507,16 @@ export async function captureSession(
     Object.values(aggregate).every((slice) => slice?.meta.source === "mock");
   const source: "mock" | "glm" = allMock ? "mock" : "glm";
 
-  return {
+  const result: CaptureSessionResult = {
     session: aggregate,
     summary,
+    orchestratorMeta: orchMeta,
     meta: {
       parallelAgentsLatencyMs: fanOutLatencyMs,
       orchestratorLatencyMs: orchMeta.latencyMs,
       source,
     },
   };
+  emit({ type: "session_completed", ts: Date.now(), result });
+  return result;
 }

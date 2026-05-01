@@ -14,7 +14,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ENV, hasLLM, hasTavily, isMockMode } from "../../env";
 import { tavilyTool, executeTavily, type TavilyArgs } from "../../tools/tavily";
 import type { LLMImage } from "../../llm";
-import type { SubAgentMeta } from "./types";
+import type { SubAgentMeta, TokenUsage } from "./types";
 
 const SUB_AGENT_MODEL = ENV.anthropic.modelBrief; // Haiku 4.5
 const MAX_TOOL_ITERATIONS = 4;
@@ -102,18 +102,52 @@ export async function runSubAgent<T>(
 
   let toolCallCount = 0;
   let tavilyUsed = false;
+  const usage: TokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+  };
+  const tavilyQueries: NonNullable<SubAgentMeta["tavilyQueries"]> = [];
+
+  function rollupUsage(u: Anthropic.Usage | undefined) {
+    if (!u) return;
+    usage.inputTokens += u.input_tokens ?? 0;
+    usage.outputTokens += u.output_tokens ?? 0;
+    usage.cacheCreationTokens += u.cache_creation_input_tokens ?? 0;
+    usage.cacheReadTokens += u.cache_read_input_tokens ?? 0;
+  }
+
+  // Prompt caching: the system prompt + tools array are stable across every
+  // call to a given sub-agent. Marking the last tool with cache_control
+  // caches everything preceding it (system + all tool specs). Subsequent
+  // calls within the cache TTL pay 10% input cost on the cached portion.
+  // This is the single biggest cost lever in a fan-out architecture.
+  const cachedSystem: Anthropic.TextBlockParam[] = [
+    {
+      type: "text",
+      text: params.systemPrompt,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+  const cachedTools = (tools as Anthropic.Tool[]).map((t, i, arr) =>
+    i === arr.length - 1
+      ? ({ ...t, cache_control: { type: "ephemeral" } } as Anthropic.Tool)
+      : t,
+  );
 
   for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
     const response = (await c.messages.create({
       model: SUB_AGENT_MODEL,
       max_tokens: MAX_TOKENS,
-      system: params.systemPrompt,
-      tools: tools as Anthropic.Tool[],
+      system: cachedSystem,
+      tools: cachedTools,
       tool_choice: forceEmit
         ? ({ type: "tool", name: params.emitTool.name } as Anthropic.ToolChoice)
         : undefined,
       messages: messages as Anthropic.MessageParam[],
     })) as Anthropic.Message;
+    rollupUsage(response.usage);
 
     const blocks = response.content as AnthropicContentBlock[];
     const toolUses = blocks.filter(
@@ -131,6 +165,8 @@ export async function runSubAgent<T>(
           source: "glm",
           toolCalls: toolCallCount,
           tavilyUsed,
+          usage,
+          tavilyQueries: tavilyQueries.length ? tavilyQueries : undefined,
         },
       };
     }
@@ -146,6 +182,8 @@ export async function runSubAgent<T>(
           source: "glm",
           toolCalls: toolCallCount,
           tavilyUsed,
+          usage,
+          tavilyQueries: tavilyQueries.length ? tavilyQueries : undefined,
         },
       };
     }
@@ -161,7 +199,14 @@ export async function runSubAgent<T>(
         toolCallCount++;
         tavilyUsed = true;
         try {
-          const result = await executeTavily(tu.input as unknown as TavilyArgs);
+          const args = tu.input as unknown as TavilyArgs;
+          const result = await executeTavily(args);
+          tavilyQueries.push({
+            query: args.query,
+            reason: args.reason,
+            cached: result.cached,
+            results: result.results.length,
+          });
           toolResults.push({
             type: "tool_result",
             tool_use_id: tu.id,
@@ -196,6 +241,8 @@ export async function runSubAgent<T>(
       source: "glm",
       toolCalls: toolCallCount,
       tavilyUsed,
+      usage,
+      tavilyQueries: tavilyQueries.length ? tavilyQueries : undefined,
     },
   };
 }
