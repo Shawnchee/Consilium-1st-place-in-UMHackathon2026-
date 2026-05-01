@@ -101,11 +101,16 @@ export async function POST(req: Request) {
       }
     }
 
+    // Telegram is now opt-in (was opt-out). The doctor reviews the
+    // orchestrator's draft owner message in the UI and explicitly fires
+    // /api/consult/telegram-send. This endpoint never delivers unless
+    // the caller passes sendTelegram:true, even if the patient has an
+    // owner_telegram chat ID on file.
     const telegram = await maybeSendTelegram({
       patient,
       ownerBody: captured.summary.ownerMessage.body,
       aftercare: captured.summary.ownerMessage.aftercare,
-      enabled: sendTelegram !== false,
+      enabled: sendTelegram === true,
     });
 
     const result: SessionCaptureResult = {

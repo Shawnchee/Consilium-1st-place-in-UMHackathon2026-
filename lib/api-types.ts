@@ -64,7 +64,12 @@ export interface ConsultCaptureRequest {
   imageUrls?: string[];
   /** Optional pre-existing diagnosis hint. */
   diagnosisHint?: string;
-  /** If true (default), the orchestrator's owner message is sent via Telegram. */
+  /**
+   * Opt-in Telegram delivery. Default is FALSE — the route only generates
+   * the draft. Doctor reviews and fires /api/consult/telegram-send to
+   * deliver. Set true only for backfill / scripted flows where the
+   * draft does not need doctor review.
+   */
   sendTelegram?: boolean;
 }
 export function parseConsultCaptureRequest(raw: unknown): ConsultCaptureRequest {
