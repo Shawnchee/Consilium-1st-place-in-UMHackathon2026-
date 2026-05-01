@@ -54,11 +54,25 @@ const EMIT_TOOL: EmitToolSpec = {
   },
 };
 
+// BILLING_MATRIX rendered once at module load. Lives in the system prompt
+// (not the user message) so the prompt-cache breakpoint in runner.ts
+// actually covers it — same matrix on every billing call. Without this,
+// the matrix re-tokenizes at full input price every consult.
+const RENDERED_MATRIX = Object.entries(BILLING_MATRIX)
+  .map(
+    ([dx, items]) =>
+      `- ${dx}:\n${items.map((i) => `    • ${i.item} — RM${i.price}`).join("\n")}`,
+  )
+  .join("\n");
+
 const SYSTEM_PROMPT = `You are the BILLING sub-agent in a parallel multi-agent consultation pipeline. Your single job is to capture every billable line-item from this consult, before the orchestrator agent assembles the final summary.
 
 You MUST call emit_billing exactly once.
 
-You have the clinic billing matrix in your user message. Rules:
+CLINIC BILLING MATRIX (RM):
+${RENDERED_MATRIX}
+
+Rules:
   1. For every diagnosis, procedure, drug, and supply mentioned in the notes/transcript, output a billing row.
   2. Use the matrix price when the item matches. If a mentioned item has no matrix entry, set price=0, flagged=true, and note="price not in matrix".
   3. ALWAYS include the consultation fee unless the notes say "no charge" or "complimentary".
@@ -96,12 +110,9 @@ function fallback(input: SessionInput): BillingCaptureOutput {
 }
 
 function buildUserMessage(input: SessionInput): string {
-  const matrix = Object.entries(BILLING_MATRIX)
-    .map(
-      ([dx, items]) =>
-        `- ${dx}:\n${items.map((i) => `    • ${i.item} — RM${i.price}`).join("\n")}`,
-    )
-    .join("\n");
+  // Matrix is in the system prompt (cached). User message holds only the
+  // per-consult variable content — that's what the orchestrator actually
+  // pays full input price for on each call.
   return [
     `Patient: ${input.patientName} (${input.patientSpecies ?? "unknown species"})`,
     input.diagnosisHint ? `Working diagnosis hint: ${input.diagnosisHint}` : null,
@@ -110,10 +121,8 @@ function buildUserMessage(input: SessionInput): string {
     input.notes || "(none)",
     "",
     input.transcript
-      ? `DICTATION TRANSCRIPT:\n${input.transcript}\n`
+      ? `DICTATION TRANSCRIPT:\n${input.transcript}`
       : null,
-    "CLINIC BILLING MATRIX (RM):",
-    matrix,
   ]
     .filter(Boolean)
     .join("\n");
