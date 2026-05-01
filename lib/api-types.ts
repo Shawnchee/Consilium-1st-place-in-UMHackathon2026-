@@ -54,6 +54,48 @@ export function parseConsultRequest(raw: unknown): ConsultRequest {
   return { patientId: r.patientId, notes: r.notes, imageUrls };
 }
 
+// ─── /api/consult/capture ───────────────────────────────────────────────────
+export interface ConsultCaptureRequest {
+  patientId: string;
+  notes: string;
+  /** Voice transcript from /api/transcribe (Deepgram). Optional. */
+  transcript?: string;
+  /** Public photo URLs (Supabase Storage / Telegram CDN). Optional. */
+  imageUrls?: string[];
+  /** Optional pre-existing diagnosis hint. */
+  diagnosisHint?: string;
+  /** If true (default), the orchestrator's owner message is sent via Telegram. */
+  sendTelegram?: boolean;
+}
+export function parseConsultCaptureRequest(raw: unknown): ConsultCaptureRequest {
+  const r = raw as Partial<ConsultCaptureRequest>;
+  if (!r || typeof r !== "object") throw new ApiError(400, "body must be object");
+  if (typeof r.patientId !== "string" || !r.patientId)
+    throw new ApiError(400, "patientId required");
+  if (typeof r.notes !== "string" || !r.notes.trim())
+    throw new ApiError(400, "notes required");
+  if (r.transcript !== undefined && typeof r.transcript !== "string")
+    throw new ApiError(400, "transcript must be string");
+  if (r.diagnosisHint !== undefined && typeof r.diagnosisHint !== "string")
+    throw new ApiError(400, "diagnosisHint must be string");
+  if (r.sendTelegram !== undefined && typeof r.sendTelegram !== "boolean")
+    throw new ApiError(400, "sendTelegram must be boolean");
+  let imageUrls: string[] | undefined;
+  if (r.imageUrls !== undefined) {
+    if (!Array.isArray(r.imageUrls) || r.imageUrls.some((u) => typeof u !== "string"))
+      throw new ApiError(400, "imageUrls must be string[]");
+    imageUrls = r.imageUrls as string[];
+  }
+  return {
+    patientId: r.patientId,
+    notes: r.notes,
+    transcript: r.transcript,
+    imageUrls,
+    diagnosisHint: r.diagnosisHint,
+    sendTelegram: r.sendTelegram,
+  };
+}
+
 // ─── /api/triage ────────────────────────────────────────────────────────────
 export interface TriageRequest {
   followupId: string;
