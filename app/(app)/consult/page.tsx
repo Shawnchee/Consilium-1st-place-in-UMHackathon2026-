@@ -7,6 +7,13 @@ import { Button, Card, Icon, Pill } from "@/components/atoms";
 import { PageHeader, PetAvatar } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
 import { StreamedText } from "@/components/app-shell/streamed-text";
+import {
+  ArchitectureDiagram,
+  SendPanel,
+  TavilyFeed,
+  Timeline,
+  useCaptureStream,
+} from "@/components/agent-team";
 import { api } from "@/lib/api";
 import { C, FONT_MONO, FONT_SERIF, SHADOW_CARD } from "@/lib/tokens";
 import type {
@@ -688,8 +695,12 @@ function ConsultContent() {
   const patient = patients.find((p) => p.id === pid) || patients[0];
 
   const [notes, setNotes] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [output, setOutput] = useState<ConsultOutput | null>(null);
+  // Multi-agent stream replaces the legacy single-call /api/consult flow.
+  // The pipeline visualization (ArchitectureDiagram / Timeline / TavilyFeed)
+  // is opt-in via showPipeline — default off so routine consults stay calm,
+  // doctors who want transparency can toggle it on per session.
+  const stream = useCaptureStream();
+  const [showPipeline, setShowPipeline] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
   const [transcribing, setTranscribing] = useState(false);
@@ -705,6 +716,20 @@ function ConsultContent() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Derive the existing UI shape from the orchestrator's summary so the
+  // SOAP / Rx / billing / todo cards below render unchanged. The new
+  // pipeline produces `summary.doctorSummary.soap`, `summary.prescription`,
+  // `summary.billing`, `summary.todos` — the existing card components only
+  // ever wanted these four fields.
+  const output: ConsultOutput | null = stream.result
+    ? {
+        soap: stream.result.summary.doctorSummary.soap,
+        prescription: stream.result.summary.prescription,
+        billing: stream.result.summary.billing,
+        todos: stream.result.summary.todos,
+      }
+    : null;
+  const generating = stream.running;
   const billTotal = useMemo(
     () => (output ? output.billing.reduce((a, b) => a + b.price, 0) : 0),
     [output]
@@ -719,10 +744,9 @@ function ConsultContent() {
 
   const generate = async () => {
     if (!notes.trim() || !patient) return;
-    setGenerating(true);
-    setOutput(null);
     try {
-      // Upload any attached photos first; pass resulting URLs to /api/consult.
+      // Upload any attached photos first; URLs flow into the multi-agent
+      // text-agent (which validates them against the SSRF allowlist).
       let imageUrls: string[] | undefined;
       if (attachments.length > 0) {
         setUploading(true);
@@ -740,24 +764,27 @@ function ConsultContent() {
         }
       }
 
-      const res = await api.consult({
+      // Drive the SSE stream — the dashboard hook handles the lifecycle
+      // events. We don't need to await events here; output is derived
+      // reactively from stream.result.
+      await stream.start({
         patientId: patient.id,
         notes,
         imageUrls,
       });
-      setOutput(res.output);
-      const flagged = res.output.billing
-        .filter((b) => b.flagged)
-        .reduce((a, b) => a + b.price, 0);
-      flashToast(
-        flagged > 0
-          ? `Extracted · ${res.output.billing.length} billing items · RM ${flagged} recoverable`
-          : `Extracted · SOAP + ${res.output.prescription.length} rx + ${res.output.todos.length} todos`,
-      );
+      const summary = stream.result?.summary;
+      if (summary) {
+        const flagged = summary.billing
+          .filter((b) => b.flagged)
+          .reduce((a, b) => a + b.price, 0);
+        flashToast(
+          flagged > 0
+            ? `Extracted · ${summary.billing.length} billing items · RM ${flagged} recoverable`
+            : `Extracted · SOAP + ${summary.prescription.length} rx + ${summary.todos.length} todos`,
+        );
+      }
     } catch (err) {
       flashToast(err instanceof Error ? err.message : "Generation failed");
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -1008,6 +1035,27 @@ function ConsultContent() {
           </span>
         </div>
       </Card>
+
+      {/* Pipeline visibility toggle + (when on) live agent execution view.
+          Off by default — routine consults stay calm. On for transparency:
+          doctor sees the parallel fan-out, Tavily searches, orchestrator
+          step animate as the consult is processed. */}
+      <PipelineToggleBar
+        showPipeline={showPipeline}
+        onToggle={() => setShowPipeline((v) => !v)}
+        running={generating}
+        result={stream.result}
+      />
+      {showPipeline && (
+        <PipelinePanel
+          lanes={stream.lanes}
+          orchestratorRange={stream.orchestratorRange}
+          tavilyEvents={stream.tavilyEvents}
+          t0={stream.t0}
+          tEnd={stream.tEnd}
+          error={stream.error}
+        />
+      )}
 
       {/* Two-column working area */}
       <div
@@ -1442,6 +1490,174 @@ function ConsultContent() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Owner Telegram delivery — appears after the orchestrator emits
+          the draft. Doctor reviews, edits if needed, enters or confirms
+          the chat ID, sends. /api/consult/telegram-send handles the
+          actual delivery and (option A) saves the chat ID to the
+          patient record on first successful send. */}
+      {stream.result && (
+        <div style={{ marginTop: 36 }}>
+          <h3
+            style={{
+              fontFamily: FONT_SERIF,
+              fontSize: 18,
+              fontWeight: 600,
+              letterSpacing: -0.3,
+              margin: "0 0 4px",
+              color: C.text,
+            }}
+          >
+            Send to owner
+          </h3>
+          <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>
+            Review the draft, confirm the chat ID, deliver via Telegram. Saves the chat ID to the patient record on success.
+          </div>
+          <SendPanel result={stream.result} patientId={patient.id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Pipeline visibility — toggle bar + live execution panel
+// ─────────────────────────────────────────────────────────────────────
+
+function PipelineToggleBar({
+  showPipeline,
+  onToggle,
+  running,
+  result,
+}: {
+  showPipeline: boolean;
+  onToggle: () => void;
+  running: boolean;
+  result: ReturnType<typeof useCaptureStream>["result"];
+}) {
+  const status = running
+    ? "Running…"
+    : result
+      ? `Done · ${(result.meta.totalLatencyMs / 1000).toFixed(2)}s`
+      : "Idle";
+  return (
+    <div
+      style={{
+        marginBottom: 18,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 16px",
+        borderRadius: 10,
+        background: showPipeline ? C.brandLight : C.bgAlt,
+        border: `1px solid ${showPipeline ? C.brandBorder : C.border}`,
+        transition: "background 180ms ease, border-color 180ms ease",
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          color: showPipeline ? C.brand : C.muted,
+        }}
+      >
+        Agent pipeline
+      </span>
+      <span style={{ color: C.border }}>·</span>
+      <span style={{ fontSize: 12.5, color: C.text, fontFamily: FONT_MONO }}>
+        {status}
+      </span>
+      <div style={{ flex: 1 }} />
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          background: "transparent",
+          border: `1px solid ${C.border}`,
+          borderRadius: 999,
+          padding: "5px 12px",
+          fontSize: 12,
+          fontWeight: 600,
+          color: C.text,
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        {showPipeline ? "Hide pipeline" : "Show pipeline"}
+      </button>
+    </div>
+  );
+}
+
+function PipelinePanel({
+  lanes,
+  orchestratorRange,
+  tavilyEvents,
+  t0,
+  tEnd,
+  error,
+}: {
+  lanes: ReturnType<typeof useCaptureStream>["lanes"];
+  orchestratorRange: ReturnType<typeof useCaptureStream>["orchestratorRange"];
+  tavilyEvents: ReturnType<typeof useCaptureStream>["tavilyEvents"];
+  t0: ReturnType<typeof useCaptureStream>["t0"];
+  tEnd: ReturnType<typeof useCaptureStream>["tEnd"];
+  error: ReturnType<typeof useCaptureStream>["error"];
+}) {
+  return (
+    <div
+      style={{
+        marginBottom: 24,
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+        gap: 16,
+        alignItems: "start",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <ArchitectureDiagram
+          lanes={lanes}
+          orchestratorRange={orchestratorRange}
+          compact
+        />
+        <Timeline
+          lanes={lanes}
+          orchestratorRange={orchestratorRange}
+          t0={t0}
+          tEnd={tEnd}
+          compact
+        />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: 1.4,
+            textTransform: "uppercase",
+            color: C.muted,
+          }}
+        >
+          Tavily feed
+        </div>
+        <TavilyFeed events={tavilyEvents} compact />
+        {error && (
+          <div
+            style={{
+              padding: "10px 12px",
+              borderRadius: 8,
+              background: C.redLight,
+              border: `1px solid ${C.redBorder}`,
+              color: C.red,
+              fontSize: 12.5,
+            }}
+          >
+            Pipeline error: {error}
+          </div>
+        )}
       </div>
     </div>
   );
