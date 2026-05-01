@@ -10,6 +10,7 @@ import os
 from functools import lru_cache
 
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
 
 
 def _require_env(key: str) -> str:
@@ -22,7 +23,17 @@ def _require_env(key: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def get_llm() -> ChatOpenAI:
+def get_llm():
+    # If we have an Anthropic key, use Claude (more reliable for synthesis)
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if anthropic_key:
+        return ChatAnthropic(
+            model="claude-haiku-4-5",
+            api_key=anthropic_key,
+            temperature=0.7,
+        )
+    
+    # Fallback to Z.AI
     return ChatOpenAI(
         api_key=_require_env("ZAI_API_KEY"),
         model=os.getenv("ZAI_MODEL", "ilmu-glm-5.1").strip() or "ilmu-glm-5.1",

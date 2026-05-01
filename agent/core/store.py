@@ -21,11 +21,11 @@ _POSTGRES_URL_ENV = "POSTGRES_URL"
 
 
 def _postgres_url() -> str:
-    url = os.getenv(_POSTGRES_URL_ENV)
+    # Try common environment variable names
+    url = os.getenv("POSTGRES_URL") or os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError(
-            f"{_POSTGRES_URL_ENV} is not set — copy agent/.env.example to "
-            "agent/.env and fill it in."
+            "Database URL is not set. Please set POSTGRES_URL or SUPABASE_DB_URL in your .env file."
         )
     return url
 

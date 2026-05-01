@@ -65,17 +65,6 @@ class TriageOutput(BaseModel):
 # ─── request models (sidecar input) ────────────────────────────────────
 
 
-class ConversationTurnIn(BaseModel):
-    """Flattened mirror of `ConversationTurn` from lib/types.ts.
-
-    The LLM only needs role + a textual representation; the TS caller
-    is responsible for collapsing tool/decision turns to {role, text}.
-    """
-
-    role: Literal["owner", "bot_tool", "bot_decision"]
-    text: str
-
-
 class TriageRequest(BaseModel):
     followup_id: str
     patient_id: str
@@ -88,4 +77,3 @@ class TriageRequest(BaseModel):
     # matches the deploying tenant. Default kept generic to avoid hardcoding.
     clinic_name: Optional[str] = "the clinic"
     tool_call_count: int = 0
-    prior_conversation: list[ConversationTurnIn] = Field(default_factory=list)

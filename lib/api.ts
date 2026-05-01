@@ -56,6 +56,14 @@ export const api = {
     postJSON<TriageRequest, TriageResponse>("/api/triage", req),
   correction: (req: CorrectionRequest) =>
     postJSON<CorrectionRequest, CorrectionResponse>("/api/corrections", req),
+  createVisit: (req: { 
+    patientId: string; 
+    rawNotes: string;
+    soap: any; 
+    prescription: any; 
+    billing: any; 
+    todos: any 
+  }) => postJSON<any, any>("/api/visits", req),
 
   /** Multipart upload of one or more images to a Supabase Storage bucket. */
   uploadPhotos: async (

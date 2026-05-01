@@ -12,14 +12,11 @@ from langgraph.graph.message import add_messages
 
 
 class ConsultationNote(TypedDict):
-    """Shape of one past consultation note pulled from the store."""
+    """Shape of one past consultation note pulled from Supabase or the store."""
 
-    note_id: str
-    patient_id: str
-    chief_complaint: str
-    diagnosis: str
-    treatment: str
-    consulted_at: str
+    visit_date: str
+    soap_note: str | None
+    prescription: dict | None
 
 
 class AgentState(TypedDict):

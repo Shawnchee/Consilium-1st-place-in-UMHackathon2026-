@@ -1316,7 +1316,7 @@ function ConsultContent() {
               icon={Icon.spark(14)}
               style={
                 !notes.trim() || generating || uploading
-                  ? { opacity: 0.45, pointerEvents: "none" }
+                   ? { opacity: 0.45, pointerEvents: "none" }
                   : undefined
               }
             >
@@ -1328,6 +1328,31 @@ function ConsultContent() {
                 ? "Regenerate structured output"
                 : "Generate structured output"}
             </Button>
+            {output && (
+              <Button
+                variant="primary"
+                size="md"
+                style={{ background: "#10b93aff", borderColor: "#10b981" }}
+                icon={Icon.check(14)}
+                onClick={async () => {
+                  try {
+                    await api.createVisit({
+                      patientId: patient.id,
+                      rawNotes: notes,
+                      soap: output.soap,
+                      prescription: output.prescription,
+                      billing: output.billing,
+                      todos: output.todos,
+                    });
+                    flashToast("Visit saved successfully!");
+                  } catch (err) {
+                    flashToast("Failed to save visit");
+                  }
+                }}
+              >
+                Finish & Save Visit
+              </Button>
+            )}
           </div>
           {generating && <GeneratingMarquee />}
         </div>

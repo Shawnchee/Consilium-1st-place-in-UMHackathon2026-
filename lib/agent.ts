@@ -28,15 +28,19 @@ export interface TriageAgentRequest {
   priorConversation?: ConversationTurn[];
 }
 
-export function isAgentEnabled(): boolean {
-  return Boolean(ENV.langgraph.serviceUrl);
-}
-
-function flattenTurn(t: ConversationTurn): { role: ConversationTurn["role"]; text: string } {
+/** 
+ * Utility to flatten complex ConversationTurns into a role/text pair 
+ * suitable for logging or mock LLM prompts. 
+ */
+export function flattenTurn(t: ConversationTurn): { role: ConversationTurn["role"]; text: string } {
   if (t.role === "owner") return { role: "owner", text: t.text };
   if (t.role === "bot_tool")
     return { role: "bot_tool", text: `[${t.tool}] ${t.ownerPrompt}` };
   return { role: "bot_decision", text: `[${t.decision}] ${t.reply}` };
+}
+
+export function isAgentEnabled(): boolean {
+  return Boolean(ENV.langgraph.serviceUrl);
 }
 
 export async function callTriageAgent(
@@ -54,7 +58,6 @@ export async function callTriageAgent(
     text: req.text,
     patient_name: req.patientName ?? "your pet",
     tool_call_count: req.toolCallCount ?? 0,
-    prior_conversation: (req.priorConversation ?? []).map(flattenTurn),
   };
 
   const resp = await fetch(`${baseUrl.replace(/\/$/, "")}/triage`, {
