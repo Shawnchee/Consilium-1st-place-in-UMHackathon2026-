@@ -47,11 +47,10 @@ const displayByName = new Map(
 
 export function rowToPatient(r: PatientRow): Patient {
   const display = displayByName.get(r.name);
-  const species = r.species === "Cat" ? "Cat" : "Dog";
   return {
     id: r.id,
     name: r.name,
-    species,
+    species: r.species ?? "Unknown",
     breed: r.breed ?? "",
     age: r.age_years != null ? `${r.age_years}yo` : "",
     sex: r.sex ?? "",

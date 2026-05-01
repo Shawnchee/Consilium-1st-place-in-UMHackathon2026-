@@ -10,6 +10,7 @@ import {
   SkeletonPatientRow,
 } from "@/components/app-shell/skeleton";
 import { ErrorBanner } from "@/components/app-shell/error-banner";
+import { AddPatientModal } from "@/components/app-shell/add-patient-modal";
 import { CLINIC } from "@/lib/clinic";
 import { C, FONT_SERIF, FONT_MONO } from "@/lib/tokens";
 import type { MetricCardData, Patient } from "@/lib/types";
@@ -527,8 +528,9 @@ function AgendaCard({
   );
 }
 
-function QuickActions() {
+function QuickActions({ onAddPatient }: { onAddPatient: () => void }) {
   const actions = [
+    { label: "Add new patient", onClick: onAddPatient },
     { label: "Open consult", href: "/consult" },
     { label: "Review follow-ups", href: "/follow-ups" },
     { label: "Pet passports", href: "/passport" },
@@ -537,13 +539,31 @@ function QuickActions() {
     <AgendaCard title="Quick actions" delay={220}>
       <div style={{ display: "grid", gap: 8 }}>
         {actions.map((a) => (
-          <Link
-            key={a.label}
-            href={a.href}
-            style={{ textDecoration: "none" }}
-          >
-            <QuickActionRow label={a.label} />
-          </Link>
+          a.href ? (
+            <Link
+              key={a.label}
+              href={a.href}
+              style={{ textDecoration: "none" }}
+            >
+              <QuickActionRow label={a.label} />
+            </Link>
+          ) : (
+            <div
+              key={a.label}
+              onClick={a.onClick}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  a.onClick?.();
+                }
+              }}
+            >
+              <QuickActionRow label={a.label} />
+            </div>
+          )
         ))}
       </div>
     </AgendaCard>
@@ -764,12 +784,15 @@ export default function DashboardPage() {
 
   const escalations = followups.filter((f) => f.level === "escalate");
   const monitors = followups.filter((f) => f.level === "monitor");
+  const [isAddModalOpen, setAddModalOpen] = useState(false);
 
   return (
     <div style={{ padding: "0 32px 120px", maxWidth: 1320, margin: "0 auto" }}>
       <HeroRow escalationCount={escalations.length} />
 
       {error && <ErrorBanner error={error} onRetry={() => void refresh()} />}
+
+      {isAddModalOpen && <AddPatientModal onClose={() => setAddModalOpen(false)} />}
 
       <KpiRow metrics={metrics} loading={loading} />
 
@@ -810,9 +833,9 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ---------- Right: Agenda widgets ---------- */}
-        <div style={{ display: "grid", gap: 16 }}>
-          <QuickActions />
+        {/* ---------- Right: Agenda & Widgets ---------- */}
+        <div style={{ display: "grid", gap: 24, position: "sticky", top: 32 }}>
+          <QuickActions onAddPatient={() => setAddModalOpen(true)} />
           <RecentActivity />
           <FollowUpSummary
             escalations={escalations.length}
