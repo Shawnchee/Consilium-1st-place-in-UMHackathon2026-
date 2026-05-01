@@ -14,6 +14,8 @@ import type {
   GetMetricsResponse,
   GetPatientResponse,
   GetPatientsResponse,
+  CreatePatientRequest,
+  CreatePatientResponse,
   TriageRequest,
   TriageResponse,
 } from "./api-types";
@@ -37,6 +39,8 @@ async function postJSON<TReq, TRes>(url: string, body: TReq): Promise<TRes> {
 
 export const api = {
   getPatients: () => getJSON<GetPatientsResponse>("/api/patients"),
+  createPatient: (req: CreatePatientRequest) =>
+    postJSON<CreatePatientRequest, CreatePatientResponse>("/api/patients", req),
   getPatient: (id: string) =>
     getJSON<GetPatientResponse>(`/api/patients?id=${encodeURIComponent(id)}`),
   getBrief: (patientId: string) =>

@@ -14,7 +14,7 @@ export interface Patient {
   id: string;
   time: string;
   name: string;
-  species: "Dog" | "Cat";
+  species: string;
   breed: string;
   age: string;
   sex: string;
