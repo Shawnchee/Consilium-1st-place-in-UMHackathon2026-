@@ -12,7 +12,7 @@ import {
 import { api } from "@/lib/api";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseBrowser } from "@/lib/supabase";
-import type { FollowUp, MetricCardData, Patient } from "@/lib/types";
+import type { FollowUp, FollowUpLevel, MetricCardData, Patient } from "@/lib/types";
 
 interface StoreCtx {
   // data

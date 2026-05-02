@@ -796,8 +796,8 @@ function ConsultContent() {
             attachments.map((a) => a.file),
             "consult-photos",
           );
-          imageUrls = uploads.map((u) => u.url).filter((u): u is string => Boolean(u));
-          if (imageUrls.length > 0) {
+          imageUrls = uploads.map((u: { url: string }) => u.url).filter((u: string | undefined): u is string => Boolean(u));
+          if (imageUrls && imageUrls.length > 0) {
             flashToast(`Uploaded ${imageUrls.length} photo${imageUrls.length === 1 ? "" : "s"}`);
           }
         } finally {
