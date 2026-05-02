@@ -30,14 +30,16 @@ import { CLINIC } from "@/lib/clinic";
 // ─────────────────────────────────────────────────────────────────────
 const SCENARIOS: { id: string; label: string; blurb: string; text: string }[] = [
   {
-    id: "ccl",
-    label: "CCL partial tear (Milo)",
-    blurb: "Right hind limp, 2wk · canonical F2 example",
+    id: "cysto",
+    label: "Cystoliths pre-op (Milo)",
+    blurb: "Bladder stones, surgery tomorrow · X-ray + bloods today",
     text:
-      "Came in for limping on right hind for past 2 weeks. Worse on stairs. No trauma witnessed. " +
-      "Palpated right stifle — pain response, mild joint effusion. Positive cranial drawer, partial. " +
-      "Doing rads today, lateral + caudocranial. Send home with Meloxicam 0.1mg/kg SID x7d, gabapentin for comfort. " +
-      "E-collar. Strict rest 14 days. Recheck in 7.",
+      "Milo, 8yo MN Mini Schnauzer, 9.8kg. 2-week history of haematuria + straining. " +
+      "Owner went to external clinic 1 week ago — prescribed amox-clav 250mg BID x7d + Royal Canin Urinary SO. " +
+      "No improvement. QAR. T 38.7, HR 110, RR 28. Mild caudal abdominal discomfort. " +
+      "Abdominal X-ray: 2 large cystoliths nearly filling bladder, multiple smaller uroliths scattered along urethra. " +
+      "Plan: pre-op bloods + urine C/S today, NPO from 22:00, cystotomy 02 Dec 09:00. " +
+      "Submit stones for analysis post-op. Continue Urinary SO pending result.",
   },
   {
     id: "otitis",

@@ -278,18 +278,18 @@ function PassportContent() {
   };
 
   const vaccinations = [
-    { name: "DHPP", last: "18 Aug 2025", next: "Aug 2026", status: "ok" as const },
-    { name: "Leptospirosis", last: "18 Aug 2025", next: "Aug 2026", status: "ok" as const },
-    { name: "Rabies", last: "02 Feb 2025", next: "Feb 2026", status: "due" as const },
-    { name: "Bordetella", last: "10 Jun 2024", next: "Jun 2025", status: "overdue" as const },
+    { name: "DHPP", last: "15 May 2025", next: "May 2026", status: "ok" as const },
+    { name: "Leptospirosis", last: "15 May 2025", next: "May 2026", status: "ok" as const },
+    { name: "Rabies", last: "20 Aug 2024", next: "Aug 2025", status: "overdue" as const },
+    { name: "Bordetella", last: "10 Mar 2025", next: "Mar 2026", status: "due" as const },
   ];
 
   const visits = [
-    { date: "14 Mar 2026", reason: "Otitis externa (right ear)", outcome: "Otomax 7d · recovering" },
-    { date: "02 Jan 2026", reason: "Annual wellness exam", outcome: "Bloods normal · weight stable" },
-    { date: "18 Aug 2025", reason: "DHPP + Lepto booster", outcome: "No adverse reaction" },
-    { date: "30 Apr 2025", reason: "Dental consultation", outcome: "Grade 2 tartar · declined by owner" },
-    { date: "12 Nov 2024", reason: "Routine check-up", outcome: "Healthy · next visit 6mo" },
+    { date: "01 Dec 2025", reason: "Pre-cystotomy workup — haematuria + straining", outcome: "X-ray confirmed cystoliths · cystotomy booked 02 Dec" },
+    { date: "24 Nov 2025", reason: "External clinic referral note (owner-reported)", outcome: "Amox-clav 7d + Urinary SO trial · symptoms persisted" },
+    { date: "15 May 2025", reason: "Annual wellness exam", outcome: "DHPP + Lepto boosters · bloods normal" },
+    { date: "10 Mar 2025", reason: "Bordetella vaccination", outcome: "No adverse reaction" },
+    { date: "20 Aug 2024", reason: "Rabies vaccination + dental check", outcome: "Healthy · grade 1 tartar noted" },
   ];
 
   return (
@@ -425,7 +425,7 @@ function PassportContent() {
                 fontFamily: FONT_MONO,
               }}
             >
-              {CLINIC.name} · Updated 20 Apr 2026
+              {CLINIC.name} · Updated 01 Dec 2025
             </div>
           </div>
 
@@ -446,7 +446,7 @@ function PassportContent() {
                 <IdentityRow label="Breed" value={p.breed} />
                 <IdentityRow label="Age" value={p.age} />
                 <IdentityRow label="Sex" value={p.sex} />
-                <IdentityRow label="Microchip ID" value="985112004728391" mono />
+                <IdentityRow label="Microchip ID" value="985112007419283" mono />
                 <IdentityRow
                   label="Owner"
                   value={
@@ -588,10 +588,10 @@ function PassportContent() {
                         letterSpacing: 0.2,
                       }}
                     >
-                      Otomax ear drops
+                      Amoxicillin-clavulanate 250mg
                     </div>
                     <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-                      4 drops right ear, twice daily · with food if irritable
+                      12.5 mg/kg PO twice daily · with food
                     </div>
                   </div>
                   <div style={{ textAlign: "right", minWidth: 140 }}>
@@ -604,7 +604,7 @@ function PassportContent() {
                         fontWeight: 700,
                       }}
                     >
-                      Day 3 of 7
+                      Day 7 of 7
                     </div>
                     {/* Hairline progress rule */}
                     <div
@@ -618,7 +618,7 @@ function PassportContent() {
                     >
                       <div
                         style={{
-                          width: `${(3 / 7) * 100}%`,
+                          width: `${(7 / 7) * 100}%`,
                           height: "100%",
                           background: C.text,
                         }}
@@ -632,7 +632,7 @@ function PassportContent() {
                         fontFamily: FONT_MONO,
                       }}
                     >
-                      Ends 24 Apr 2026
+                      Ends 01 Dec 2025
                     </div>
                   </div>
                 </div>
@@ -651,7 +651,7 @@ function PassportContent() {
                     letterSpacing: -0.2,
                   }}
                 >
-                  Ear infection — recovering
+                  Bladder stones — surgery scheduled
                 </div>
                 <div
                   style={{
@@ -661,8 +661,9 @@ function PassportContent() {
                     lineHeight: 1.55,
                   }}
                 >
-                  Otitis externa of the right ear canal. Responded well to 7-day
-                  Otomax course. Owner reports reduced head-shaking by Day 2.
+                  Cystolithiasis with secondary urolithiasis. Two large cystoliths
+                  nearly filling the bladder, plus smaller uroliths scattered along
+                  the urethra. Cystotomy scheduled for 02 Dec 2025.
                 </div>
                 <div
                   style={{
@@ -673,7 +674,7 @@ function PassportContent() {
                     letterSpacing: 0.2,
                   }}
                 >
-                  {CLINIC.doctor} · 14 Mar 2026
+                  {CLINIC.doctor} · 01 Dec 2025
                 </div>
               </div>
             </BookletSection>
@@ -697,10 +698,12 @@ function PassportContent() {
                   background: "#FFFFFF",
                 }}
               >
-                Check right ear — confirm canal fully resolved before
-                discontinuing topical therapy. Owner declined dental
-                recommendation ×2 (2024, 2025); continue advising at next
-                wellness exam. Annual vaccines currently overdue.
+                Pre-cystotomy patient. Submit removed stones for analysis
+                (likely struvite — failed medical dissolution despite 7-day
+                antibiotic + Urinary SO trial at external clinic). Continue
+                Urinary SO post-op pending lab result. Recheck UA at 2 + 6
+                weeks. Watch for urethral obstruction signs in the meantime —
+                recurrent species/breed risk.
               </blockquote>
             </BookletSection>
 

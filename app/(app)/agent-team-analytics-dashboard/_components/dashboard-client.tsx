@@ -41,11 +41,11 @@ const PRICING = {
 const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: string }[] = [
   {
     id: "p1",
-    label: "Milo — ear recheck",
+    label: "Milo — pre-cystotomy workup",
     notes:
-      "Right ear externa recheck. Canal still mildly erythematous, less debris than last visit. Continuing Otomax 0.5 mL BID for another 7 days. Recheck cytology in 2 weeks. Annual DHPP + Lepto due — administered today.",
+      "8yo MN Mini Schnauzer, 9.8kg. 2-wk haematuria + straining. External clinic 1 week ago: amox-clav 250mg BID x7d + Royal Canin Urinary SO — no improvement. QAR. T 38.7, HR 110, RR 28. Mild caudal abdominal discomfort. Abdominal X-ray: 2 large cystoliths nearly filling bladder + multiple uroliths along urethra. Pre-op bloods + urine C/S today. NPO from 22:00. Cystotomy 02 Dec 09:00.",
     transcript:
-      "Owner: He's been so much better since last week, scratching way less. I just wanted to make sure the ear is fully clear before stopping. Also remembered the vaccine was overdue.",
+      "Owner: He's been straining and there's blood in his pee for two weeks. The other clinic gave us antibiotics and that special urinary food a week ago, but it hasn't really helped. He's still eating and drinking, just uncomfortable when he tries to pee.",
   },
   {
     id: "p2",
@@ -65,17 +65,17 @@ const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: str
   },
   {
     // Designed to actually trigger Tavily on the prescription agent.
-    // Librela (bedinvetmab) is a newish mAb for canine OA — NOT in the
-    // BILLING_MATRIX, raises species-safety + recall questions the
-    // prescription-agent prompt explicitly considers Tavily-worthy.
-    // Use this fixture in the demo to prove the live web-search lights
-    // up for non-routine cases.
+    // Onsior (robenacoxib) is a COX-2-selective veterinary NSAID — NOT in
+    // the BILLING_MATRIX, raises species-safety + post-cystotomy duration
+    // questions the prescription-agent prompt explicitly considers
+    // Tavily-worthy. Use this fixture in the demo to prove the live
+    // web-search lights up for non-routine cases.
     id: "p1",
-    label: "Milo — Librela request (Tavily demo)",
+    label: "Milo — Onsior post-op question (Tavily demo)",
     notes:
-      "Owner asking about switching Milo from chronic NSAIDs to Librela 10 mg/kg SC monthly for OA flare-ups. He's on long-term Meloxicam — discussed transition + injection schedule. Confirm current safety profile and any active recalls before next visit.",
+      "Owner asking about switching Milo from Meloxicam to Onsior (robenacoxib) for post-cystotomy pain — read it's gentler on the kidneys. Confirm current canine safety profile, dose for 9.8kg dog, recommended post-op duration, and any active recalls before tomorrow's surgery.",
     transcript:
-      "Owner: My friend's vet started her dog on Librela and she's doing way better than on the daily pill. Is it safe for Milo to switch? I read something online about side effects.",
+      "Owner: My friend's vet uses Onsior for her dog after surgery and says it's better on the kidneys than Meloxicam. Can we use that for Milo instead? I'm worried because he's older and the stones might have already strained things.",
   },
 ];
 

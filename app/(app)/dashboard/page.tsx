@@ -69,7 +69,7 @@ function HeroRow({ escalationCount }: { escalationCount: number }) {
         >
           {CLINIC.name}
           <span style={{ margin: "0 10px", color: C.hint }}>·</span>
-          Tue 21 Apr 2026
+          Mon 1 Dec 2025
         </div>
       </div>
 
