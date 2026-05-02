@@ -56,8 +56,20 @@ export async function uploadPhotos(
 export async function transcribe(
   audio: Blob,
 ): Promise<{ transcript: string; confidence: number | null }> {
+  // FormData.append(blob) without a filename loses the Blob's MIME on
+  // the server — the route then forwards application/octet-stream to
+  // Deepgram, which rejects with "corrupt or unsupported data". Pass
+  // a filename whose extension matches the recorded MIME so the type
+  // round-trips through multipart parsing intact.
+  const ext = audio.type.includes("ogg")
+    ? "ogg"
+    : audio.type.includes("mp4")
+      ? "mp4"
+      : audio.type.includes("wav")
+        ? "wav"
+        : "webm";
   const formData = new FormData();
-  formData.append("audio", audio);
+  formData.append("audio", audio, `recording.${ext}`);
   const resp = await fetch("/api/transcribe", {
     method: "POST",
     body: formData,
