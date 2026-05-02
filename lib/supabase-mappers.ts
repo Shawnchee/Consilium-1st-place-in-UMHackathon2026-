@@ -76,6 +76,7 @@ export type FollowupRow = {
   owner_message: string | null;
   recommended_action: string | null;
   draft_response: string | null;
+  glm_decision: string | null;
   differentials: unknown;
   conversation: unknown;
   tool_call_count: number | null;
@@ -83,6 +84,7 @@ export type FollowupRow = {
   created_at: string;
   telegram_chat_id: string | null;
   visits: {
+    id: string;
     visit_date: string;
     raw_notes: string | null;
     patients: { id: string; name: string; owner_name: string | null } | null;
@@ -158,6 +160,7 @@ export function rowToFollowUp(r: FollowupRow): FollowUp {
   return {
     id: r.id,
     level: toLevel(r.status),
+    botLevel: r.glm_decision ? toLevel(r.glm_decision) : undefined,
     patient: patient?.name ?? "Unknown",
     procedure: procedureFromNotes(visit?.raw_notes ?? null),
     owner: patient?.owner_name ?? "",
@@ -166,10 +169,12 @@ export function rowToFollowUp(r: FollowupRow): FollowUp {
     differentials: parseDifferentials(r.differentials),
     recommendation: r.recommended_action ?? "",
     draft: r.draft_response ?? undefined,
+    originalAiDraft: r.draft_response ?? undefined,
     tsLabel: undefined,
     conversation: parseConversation(r.conversation),
     toolCallCount: r.tool_call_count ?? 0,
     chatId: r.telegram_chat_id ?? undefined,
     patientId: patient?.id ?? undefined,
+    visitId: visit?.id ?? undefined,
   };
 }

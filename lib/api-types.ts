@@ -279,6 +279,18 @@ export type GetFollowupsResponse = {
   followups: FollowUp[];
   resolvedCount: number;
 };
+export interface UpdateFollowupRequest {
+  id: string;
+  status?: string;
+  draft?: string;
+}
+export type UpdateFollowupResponse = { ok: true };
+export function parseUpdateFollowupRequest(raw: unknown): UpdateFollowupRequest {
+  const r = raw as Partial<UpdateFollowupRequest>;
+  if (!r || typeof r !== "object") throw new ApiError(400, "body must be object");
+  if (typeof r.id !== "string" || !r.id) throw new ApiError(400, "id required");
+  return { id: r.id, status: r.status, draft: r.draft };
+}
 
 // ─── /api/metrics ───────────────────────────────────────────────────────────
 export type GetMetricsResponse = { metrics: MetricCardData[] };
@@ -336,8 +348,10 @@ export interface CorrectionRequest {
   visitId?: string;
   followupId?: string;
   glmOutput: string;
+  glmTriage?: string;
   rejectionReason?: string;
   doctorCorrection?: string;
+  doctorTriage?: string;
   approved: boolean;
 }
 export type CorrectionResponse = { ok: true; id: string };
@@ -356,8 +370,10 @@ export function parseCorrectionRequest(raw: unknown): CorrectionRequest {
     visitId: r.visitId,
     followupId: r.followupId,
     glmOutput: r.glmOutput,
+    glmTriage: r.glmTriage,
     rejectionReason: r.rejectionReason,
     doctorCorrection: r.doctorCorrection,
+    doctorTriage: r.doctorTriage,
     approved: r.approved,
   };
 }

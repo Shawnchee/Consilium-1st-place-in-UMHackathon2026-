@@ -202,8 +202,12 @@ async function realPath<T>(params: CallGLMParams): Promise<CallGLMResult<T>> {
       return reg?.handling === "emit";
     });
     if (emit) {
+      const data = { ...(emit.input as any) };
+      if (emit.name === "emit_decision") {
+        data.kind = "decision";
+      }
       return {
-        data: emit.input as T,
+        data: data as T,
         raw: JSON.stringify(emit.input),
         model,
         latencyMs: Date.now() - startedAt,

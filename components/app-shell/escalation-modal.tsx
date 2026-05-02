@@ -319,10 +319,15 @@ export default function EscalationModal() {
     approveEscalation,
     approving,
     approveError,
+    updateFollowupDraft,
+    changeFollowUpLevel,
+    approveClear,
   } = useStore();
   const [mounted, setMounted] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editedDraft, setEditedDraft] = useState("");
+  const [pendingLevel, setPendingLevel] = useState<FollowUpLevel | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
 
   useEffect(() => {
     if (!escalation) return;
@@ -350,6 +355,9 @@ export default function EscalationModal() {
 
   if (!escalation) return null;
   const f = escalation;
+
+  const tone = f.level === "escalate" ? C.red : f.level === "monitor" ? C.amber : C.green;
+  const label = f.level === "escalate" ? "Escalation Required" : f.level === "monitor" ? "Review Case" : "Recovered Case";
 
   return (
     <div
@@ -380,18 +388,18 @@ export default function EscalationModal() {
           border: BORDER_HAIRLINE,
         }}
       >
-        {/* Header — thin red accent left border, no wash */}
+        {/* Header — dynamic accent left border */}
         <div
           style={{
             padding: "22px 28px 18px",
             borderBottom: BORDER_HAIRLINE,
-            borderLeft: `3px solid ${C.red}`,
+            borderLeft: `3px solid ${tone}`,
             display: "flex",
             alignItems: "center",
             gap: 14,
           }}
         >
-          <Dot color={C.red} size={8} pulsing />
+          <Dot color={tone} size={8} pulsing={f.level === "escalate"} />
           <div style={{ flex: 1 }}>
             <div
               style={{
@@ -399,10 +407,10 @@ export default function EscalationModal() {
                 fontWeight: 700,
                 letterSpacing: 2,
                 textTransform: "uppercase",
-                color: C.red,
+                color: tone,
               }}
             >
-              Escalation Required
+              {label}
             </div>
             <div
               style={{
@@ -591,9 +599,74 @@ export default function EscalationModal() {
               {editedDraft || f.draft}
             </div>
           )}
+
+          {pendingLevel && (
+            <div
+              style={{
+                marginTop: 20,
+                padding: "16px 20px",
+                background: "#FFF9E6",
+                border: `1px solid ${C.amber}`,
+                borderRadius: RADIUS.md,
+                animation: "fadeUp 260ms ease both",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: 1.2,
+                  color: C.amber,
+                  marginBottom: 10,
+                }}
+              >
+                Reason for change to {pendingLevel}
+              </div>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Why are you overriding the triage level?"
+                autoFocus
+                style={{
+                  width: "100%",
+                  minHeight: 80,
+                  padding: "12px",
+                  borderRadius: RADIUS.sm,
+                  border: BORDER_HAIRLINE,
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                  marginBottom: 12,
+                  resize: "vertical",
+                  outline: "none",
+                }}
+              />
+              <div style={{ display: "flex", gap: 10 }}>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    void changeFollowUpLevel(f, pendingLevel, rejectionReason);
+                    setPendingLevel(null);
+                    setRejectionReason("");
+                  }}
+                >
+                  Save change
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setPendingLevel(null);
+                    setRejectionReason("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Action bar — PRD §F3: [Approve & Send] [Edit] [Call] */}
         <div
           style={{
             padding: "16px 28px 22px",
@@ -602,30 +675,83 @@ export default function EscalationModal() {
             gap: 10,
             alignItems: "center",
             background: "#FBFAF7",
+            flexWrap: "wrap",
           }}
         >
-          <Button
-            size="md"
-            onClick={() => {
-              void approveEscalation(editedDraft);
-            }}
-            disabled={approving || editing}
-            icon={Icon.check(15)}
-          >
-            {approving ? "Sending…" : "Approve & Send"}
-          </Button>
+          {f.level === "clear" ? (
+            <Button
+              size="md"
+              onClick={() => {
+                void approveClear(f);
+                closeEscalation();
+              }}
+              disabled={approving}
+              icon={Icon.check(15)}
+            >
+              Approve
+            </Button>
+          ) : (
+            <Button
+              size="md"
+              onClick={() => {
+                void approveEscalation(editedDraft);
+              }}
+              disabled={approving || editing}
+              icon={Icon.check(15)}
+            >
+              {approving ? "Sending…" : "Approve & Send"}
+            </Button>
+          )}
+
           <Button
             variant="soft"
             size="md"
-            onClick={() => setEditing((v) => !v)}
+            onClick={() => {
+              if (editing) {
+                updateFollowupDraft(f, editedDraft);
+              }
+              setEditing((v) => !v);
+            }}
             disabled={approving}
             icon={editing ? Icon.check(14) : Icon.edit(14)}
           >
             {editing ? "Save" : "Edit"}
           </Button>
+
           <Button variant="soft" size="md" icon={Icon.phone(14)}>
-            Call Owner
+            Call
           </Button>
+
+          <div style={{ borderLeft: BORDER_HAIRLINE, height: 24, margin: "0 4px" }} />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPendingLevel("escalate")}
+            disabled={f.level === "escalate" || approving || pendingLevel !== null}
+            style={{ color: f.level === "escalate" ? C.red : C.muted }}
+          >
+            Escalate
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPendingLevel("monitor")}
+            disabled={f.level === "monitor" || approving || pendingLevel !== null}
+            style={{ color: f.level === "monitor" ? C.amber : C.muted }}
+          >
+            Monitor
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPendingLevel("clear")}
+            disabled={f.level === "clear" || approving || pendingLevel !== null}
+            style={{ color: f.level === "clear" ? C.green : C.muted }}
+          >
+            Recovered
+          </Button>
+
           <div style={{ flex: 1 }} />
           {approveError ? (
             <div style={{ fontSize: 11.5, color: "#B23A3A" }}>{approveError}</div>

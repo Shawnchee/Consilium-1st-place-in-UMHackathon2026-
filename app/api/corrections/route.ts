@@ -22,8 +22,10 @@ export async function POST(req: Request) {
           followup_id: correction.followupId,
           feature: correction.feature,
           glm_output: correction.glmOutput,
+          glm_triage: correction.glmTriage,
           rejection_reason: correction.rejectionReason,
           doctor_correction: correction.doctorCorrection,
+          doctor_triage: correction.doctorTriage,
           approved: correction.approved,
         })
         .select("id")

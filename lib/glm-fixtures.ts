@@ -210,7 +210,7 @@ export function triageFixture(params: CallGLMParams): TriageFixtureOutput {
 
   // Strong signals go terminal on turn 1 — no point asking for a photo
   // of an actively seizing animal.
-  if (hit(msg, STRONG_ESCALATE)) {
+  if (hit(msg, STRONG_ESCALATE) || msg.includes("MANUAL DOCTOR ESCALATION")) {
     return escalateDecision(
       `Strong red-flag keyword detected in message: "${msg}"`,
       0.88,
@@ -276,7 +276,7 @@ export function triageFixture(params: CallGLMParams): TriageFixtureOutput {
   }
 
   return monitorDecision(
-    "Ambiguous signal after info gathering — recovery slow but not deteriorating. Continue current plan, re-check in 24h.",
+    `Decision reached (${toolCallCount >= 1 ? "turn 2" : "turn 1"}): recovery slow but not deteriorating.`,
   );
 }
 

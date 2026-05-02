@@ -15,9 +15,14 @@ export async function POST(req: Request) {
     });
     const { message } = parseTriageRequest(body);
 
+    const isManualEscalation = message.includes("[MANUAL DOCTOR ESCALATION]");
+
     const result = await callGLM<TriageFixtureOutput>({
       feature: "triage",
       user: message,
+      system: isManualEscalation 
+        ? "You are a veterinary assistant. THE DOCTOR HAS MANUALLY ESCALATED THIS CASE. You MUST provide a terminal 'emit_decision' with decision='escalate'. Do NOT use any clarifying tools. Write a warm, professional escalation reply for the owner."
+        : undefined,
       context: { toolCallCount: 1 },
     });
 

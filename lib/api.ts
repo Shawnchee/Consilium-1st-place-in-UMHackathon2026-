@@ -18,6 +18,8 @@ import type {
   TelegramSendResponse,
   CreateVisitRequest,
   CreateVisitResponse,
+  UpdateFollowupRequest,
+  UpdateFollowupResponse,
 } from "./api-types";
 
 export const api = {
@@ -31,6 +33,8 @@ export const api = {
       `/api/brief?patient_id=${encodeURIComponent(patientId)}`,
     ),
   getFollowups: () => getJSON<GetFollowupsResponse>("/api/followups"),
+  updateFollowup: (req: UpdateFollowupRequest) =>
+    postJSON<UpdateFollowupRequest, UpdateFollowupResponse>("/api/followups", req),
   getMetrics: () => getJSON<GetMetricsResponse>("/api/metrics"),
   getAnalytics: () => getJSON<GetAnalyticsResponse>("/api/analytics"),
   consult: (req: ConsultRequest) =>

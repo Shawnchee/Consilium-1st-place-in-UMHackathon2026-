@@ -7,10 +7,14 @@ import {
   rowToFollowUp,
   type FollowupRow,
 } from "@/lib/supabase-mappers";
-import type { GetFollowupsResponse } from "@/lib/api-types";
+import {
+  ApiError,
+  parseUpdateFollowupRequest,
+  type GetFollowupsResponse,
+} from "@/lib/api-types";
 
 const SELECT =
-  "id,status,owner_message,recommended_action,draft_response,differentials,conversation,tool_call_count,sent_at,created_at,telegram_chat_id,visits(visit_date,raw_notes,patients(id,name,owner_name))";
+  "id,status,owner_message,recommended_action,draft_response,glm_decision,differentials,conversation,tool_call_count,sent_at,created_at,telegram_chat_id,visits(id,visit_date,raw_notes,patients(id,name,owner_name))";
 
 export async function GET() {
   try {
@@ -37,6 +41,35 @@ export async function GET() {
       followups: INITIAL_FOLLOWUPS,
       resolvedCount: 12,
     });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    if (!hasSupabase()) {
+      return json({ ok: true });
+    }
+
+    const body = await req.json().catch(() => {
+      throw new ApiError(400, "invalid JSON");
+    });
+    const { id, status, draft } = parseUpdateFollowupRequest(body);
+
+    const db = getSupabaseServer();
+    const updateData: any = {};
+    if (status) updateData.status = status;
+    if (draft !== undefined) updateData.draft_response = draft;
+
+    const { error } = await db
+      .from("followups")
+      .update(updateData)
+      .eq("id", id);
+
+    if (error) throw error;
+
+    return json({ ok: true });
   } catch (err) {
     return errorResponse(err);
   }
