@@ -100,7 +100,11 @@ export async function runPrescriptionAgent(input: SessionInput) {
     systemPrompt: SYSTEM_PROMPT,
     userMessage: buildUserMessage(input),
     emitTool: EMIT_TOOL,
-    enableTavily: true,
+    // Tavily disabled — same reasoning as the billing agent. Recall /
+    // contraindication checks are valuable but routinely add 5-15s. The
+    // doctor reviews the prescription before send anyway, so they
+    // remain the safety net for routine prescribing.
+    enableTavily: false,
     fallback,
   });
 }

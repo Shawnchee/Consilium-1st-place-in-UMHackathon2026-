@@ -12,7 +12,11 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { SessionCaptureResult, SubAgentMeta } from "@/lib/agents/sub-agents/types";
+import type {
+  SessionCaptureResult,
+  SessionSummaryOutput,
+  SubAgentMeta,
+} from "@/lib/agents/sub-agents/types";
 import {
   initialLanes,
   type AgentLanes,
@@ -37,6 +41,13 @@ export interface CaptureStreamState {
   orchestratorRange: OrchestratorRange;
   /** Orchestrator (Sonnet) meta after it completes — usage, latency. */
   orchestratorMeta: SubAgentMeta | null;
+  /**
+   * Partial summary accumulating from orchestrator_delta events. Renders
+   * SOAP/Rx fields as Sonnet streams its tool input. Cleared on reset(),
+   * superseded by the terminal `result.summary` once session_completed
+   * fires (callers should prefer `result.summary` if present).
+   */
+  partialSummary: Partial<SessionSummaryOutput> | null;
   /** Tavily call events for the live feed. */
   tavilyEvents: Extract<PipelineEvent, { type: "tavily_called" }>[];
   /** Terminal SessionCaptureResult — null until session_completed. */
@@ -68,6 +79,7 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
   const [lanes, setLanes] = useState<AgentLanes>(() => initialLanes());
   const [orchestratorRange, setOrchestratorRange] = useState<OrchestratorRange>({});
   const [orchestratorMeta, setOrchestratorMeta] = useState<SubAgentMeta | null>(null);
+  const [partialSummary, setPartialSummary] = useState<Partial<SessionSummaryOutput> | null>(null);
   const [events, setEvents] = useState<PipelineEvent[]>([]);
   const [result, setResult] = useState<SessionCaptureResult | null>(null);
   const [t0, setT0] = useState<number | null>(null);
@@ -80,6 +92,7 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
     setLanes(initialLanes());
     setOrchestratorRange({});
     setOrchestratorMeta(null);
+    setPartialSummary(null);
     setEvents([]);
     setResult(null);
     setT0(null);
@@ -128,9 +141,13 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
       case "orchestrator_started":
         setOrchestratorRange((p) => ({ ...p, s: evt.ts }));
         break;
+      case "orchestrator_delta":
+        setPartialSummary(evt.partial);
+        break;
       case "orchestrator_completed":
         setOrchestratorRange((p) => ({ ...p, e: evt.ts }));
         setOrchestratorMeta(evt.meta);
+        setPartialSummary(evt.summary);
         break;
       case "session_completed":
         setResult(evt.result);
@@ -220,6 +237,7 @@ export function useCaptureStream(): CaptureStreamState & CaptureStreamControls {
     lanes,
     orchestratorRange,
     orchestratorMeta,
+    partialSummary,
     tavilyEvents,
     result,
     t0,

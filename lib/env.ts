@@ -18,12 +18,14 @@ export const ENV = {
 
   // Single-clinic deployment config. Client components read the
   // NEXT_PUBLIC_* mirrors (this same object — Next inlines them at build).
-  // Defaults preserve the demo PawsClinic identity so a fresh clone still
+  // Defaults preserve the demo Peng Aun identity so a fresh clone still
   // builds and demos out of the box.
   clinic: {
     id: read("CLINIC_ID") || read("NEXT_PUBLIC_CLINIC_ID") || "pawsclinic_kl",
     name:
-      read("NEXT_PUBLIC_CLINIC_NAME") || read("CLINIC_NAME") || "PawsClinic KL",
+      read("NEXT_PUBLIC_CLINIC_NAME") ||
+      read("CLINIC_NAME") ||
+      "Peng Aun Clinic Penang",
     doctor:
       read("NEXT_PUBLIC_CLINIC_DOCTOR") ||
       read("CLINIC_DOCTOR") ||
@@ -31,7 +33,7 @@ export const ENV = {
     phone:
       read("NEXT_PUBLIC_CLINIC_PHONE") ||
       read("CLINIC_PHONE") ||
-      "+60 12 345 6789",
+      "+60 13 928 4717",
   },
 
   anthropic: {
@@ -72,6 +74,21 @@ export const hasDeepgram = () => Boolean(ENV.deepgram.apiKey);
 export const hasTavily = () => Boolean(ENV.tavily.apiKey);
 export const hasSupabase = () =>
   Boolean(ENV.supabase.url && ENV.supabase.anonKey);
+
+/**
+ * Client-safe Supabase check.
+ *
+ * `hasSupabase()` reads `ENV.supabase.url` which uses dynamic
+ * `process.env[k]` access — Next.js can only inline `NEXT_PUBLIC_*`
+ * env vars when accessed via *literal* property syntax at build time,
+ * so the dynamic helper always returns false in client bundles. Use
+ * this helper instead from `"use client"` components.
+ */
+export const hasSupabaseClient = () =>
+  Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  );
 export const hasSupabaseAdmin = () =>
   hasSupabase() && Boolean(ENV.supabase.serviceRoleKey);
 export const hasTelegram = () => Boolean(ENV.telegram.botToken);

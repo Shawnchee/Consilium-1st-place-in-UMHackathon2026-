@@ -15,6 +15,69 @@ import type { FollowUp } from "@/lib/types";
 
 type Filter = "all" | "escalate" | "monitor" | "clear";
 
+/**
+ * Small chip surfacing how many owner-attached photos are in this
+ * followup's conversation. Walks `f.conversation`, sums photoUrls across
+ * all owner turns, and renders a thumbnail strip + count chip. Returns
+ * null when there are no photos so the layout stays unchanged for
+ * text-only follow-ups.
+ */
+function PhotoChip({ f }: { f: FollowUp }) {
+  const turns = f.conversation ?? [];
+  const photos: string[] = [];
+  for (const t of turns) {
+    if (t.role === "owner" && t.photoUrls) photos.push(...t.photoUrls);
+  }
+  if (photos.length === 0) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginTop: -8,
+        marginBottom: 14,
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 5,
+          padding: "2px 8px",
+          fontSize: 10.5,
+          fontWeight: 600,
+          letterSpacing: 0.3,
+          color: C.muted,
+          border: `1px solid ${C.border}`,
+          borderRadius: 999,
+          background: "#fff",
+        }}
+      >
+        📷 {photos.length} photo{photos.length === 1 ? "" : "s"} attached
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {photos.slice(0, 3).map((url, i) => (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            key={`${url}-${i}`}
+            src={url}
+            alt={`Owner photo ${i + 1}`}
+            style={{
+              width: 32,
+              height: 32,
+              objectFit: "cover",
+              borderRadius: 4,
+              border: `1px solid ${C.border}`,
+              background: "#fff",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FilterTabs({
   value,
   onChange,
@@ -167,6 +230,8 @@ function EscalationCard({
         &ldquo;{f.ownerMessage}&rdquo;
       </div>
 
+      <PhotoChip f={f} />
+
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ fontSize: 12, color: C.muted }}>{f.owner}</div>
         <div style={{ flex: 1 }} />
@@ -259,6 +324,8 @@ function MonitorCard({
       >
         &ldquo;{f.ownerMessage}&rdquo;
       </div>
+
+      <PhotoChip f={f} />
 
       <div
         style={{
@@ -365,6 +432,8 @@ function ClearCard({
       >
         &ldquo;{f.ownerMessage}&rdquo;
       </div>
+
+      <PhotoChip f={f} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ fontSize: 12, color: C.muted }}>Pending Approval · {f.owner}</div>

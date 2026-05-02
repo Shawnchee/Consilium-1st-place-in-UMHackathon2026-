@@ -12,6 +12,8 @@ import {
 import { api } from "@/lib/api";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseBrowser } from "@/lib/supabase";
+import { buildPayloadFromConsult } from "@/lib/passport-fixtures";
+import type { SessionCaptureResult } from "@/lib/agents/sub-agents/types";
 import type { FollowUp, FollowUpLevel, MetricCardData, Patient } from "@/lib/types";
 
 interface StoreCtx {
@@ -36,6 +38,40 @@ interface StoreCtx {
   flashToast: (msg: string) => void;
   expandedPatient: string | null;
   setExpandedPatient: (id: string | null) => void;
+
+  /**
+   * Last patient INSERTed via Supabase Realtime — the doctor side
+   * renders a clickable arrival banner from this so a freshly
+   * registered intake doesn't require a manual refresh. Cleared
+   * by the banner's dismiss button or after auto-timeout.
+   */
+  newPatientArrival: {
+    id: string;
+    name: string;
+    reason: string | null;
+    arrivedAt: number;
+  } | null;
+  dismissNewPatientArrival: () => void;
+
+  /**
+   * Remove a patient from the schedule. Optimistically removes from
+   * local state, then DELETEs from Supabase. On failure, refreshes
+   * to restore correct state and surfaces an error toast.
+   */
+  deletePatient: (id: string) => Promise<void>;
+
+  /**
+   * Build a passport from the orchestrator output, persist it, and ping
+   * the owner on Telegram with the public passport URL appended to the
+   * draft body. Returns the absolute passport URL on success so the
+   * caller can render a copyable link.
+   */
+  closeConsultAndGeneratePassport: (
+    patientId: string,
+    result: SessionCaptureResult,
+    chatId: string,
+    options?: { bodyDraft?: string; aftercare?: string[] },
+  ) => Promise<{ passportUrl: string; messageId: number }>;
   approveClear: (f: FollowUp) => void;
   changeFollowUpLevel: (f: FollowUp, level: FollowUpLevel, reason?: string) => void;
   updateFollowupDraft: (f: FollowUp, draft: string) => void;
@@ -46,6 +82,13 @@ type FollowupRowPayload = {
   id: string;
   status?: string;
   owner_message?: string | null;
+};
+
+/** Minimum shape we read off a Realtime `patients` INSERT payload. */
+type PatientRowPayload = {
+  id: string;
+  name?: string | null;
+  reason_for_visit?: string | null;
 };
 
 const Ctx = createContext<StoreCtx | null>(null);
@@ -63,6 +106,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [approving, setApproving] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
+  const [newPatientArrival, setNewPatientArrival] = useState<
+    StoreCtx["newPatientArrival"]
+  >(null);
+  const dismissNewPatientArrival = useCallback(
+    () => setNewPatientArrival(null),
+    [],
+  );
 
   // `silent` skips the loading skeleton flash — used for Realtime-triggered
   // refreshes where a full skeleton wipe would be jarring.
@@ -149,10 +199,64 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [loadFollowups]);
 
+  /* ─── Supabase Realtime on `patients` INSERTs ─────────────────────────
+     Fires when a receptionist registers a new patient via /receptionist.
+     We refresh the patient list silently and surface a clickable arrival
+     banner so the doctor doesn't need to hunt for the new row.
+  ─────────────────────────────────────────────────────────────────────── */
+  const seenArrivalIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hasSupabase()) return;
+    const sb = getSupabaseBrowser();
+    const channel = sb
+      .channel("patients-live")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "patients" },
+        (payload) => {
+          const row = payload.new as PatientRowPayload;
+          if (!row?.id || seenArrivalIds.current.has(row.id)) return;
+          seenArrivalIds.current.add(row.id);
+          void loadFollowups(true);
+          setNewPatientArrival({
+            id: row.id,
+            name: row.name ?? "New patient",
+            reason: row.reason_for_visit ?? null,
+            arrivedAt: Date.now(),
+          });
+        },
+      )
+      .subscribe();
+    return () => {
+      void sb.removeChannel(channel);
+    };
+  }, [loadFollowups]);
+
   const flashToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3400);
   }, []);
+
+  const deletePatient = useCallback(
+    async (id: string) => {
+      const prev = patients;
+      const removed = prev.find((p) => p.id === id);
+      // Optimistic remove — keeps the demo snappy. Roll back on failure.
+      setPatients((ps) => ps.filter((p) => p.id !== id));
+      try {
+        await api.deletePatient(id);
+        flashToast(
+          removed ? `Removed ${removed.name} from schedule` : "Patient removed",
+        );
+      } catch (err) {
+        setPatients(prev);
+        flashToast(
+          `Failed to remove patient: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
+      }
+    },
+    [patients, flashToast],
+  );
 
   const openEscalation = useCallback((f: FollowUp) => {
     setApproveError(null);
@@ -218,6 +322,81 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [escalation, approving, flashToast]);
 
+  const closeConsultAndGeneratePassport = useCallback(
+    async (
+      patientId: string,
+      result: SessionCaptureResult,
+      chatId: string,
+      options?: { bodyDraft?: string; aftercare?: string[] },
+    ): Promise<{ passportUrl: string; messageId: number }> => {
+      const patient = patients.find((p) => p.id === patientId);
+      if (!patient) throw new Error(`patient ${patientId} not loaded`);
+      if (!chatId.trim()) throw new Error("Telegram chat ID required");
+
+      // Carry forward existing vaccinations / microchip / share UUID if a
+      // prior passport already exists, so close-case doesn't wipe them.
+      let prior = null;
+      try {
+        const r = await api.getPassport(patientId);
+        prior = r.payload;
+      } catch {
+        prior = null;
+      }
+
+      const payload = buildPayloadFromConsult(patient, result, prior);
+      const upsert = await api.upsertPassport({ patientId, payload });
+
+      // Persist the visit + a stub followup tied to the chat id. The
+      // followup is what lets the Telegram bot recognise the owner's
+      // future messages and triage them against THIS visit. Without it
+      // the bot sees `no followup linked to chat <id>` and the demo's
+      // after-hours triage beat fails. Best-effort — visit save errors
+      // are surfaced as a toast but don't roll back the passport/send.
+      try {
+        await api.createVisit({
+          patientId,
+          rawNotes: "(close-case from consult page)",
+          soap: result.summary.doctorSummary?.soap ?? {
+            S: "",
+            O: "",
+            A: "",
+            P: "",
+          },
+          prescription: result.summary.prescription ?? [],
+          billing: result.summary.billing ?? [],
+          todos: result.summary.todos ?? [],
+          telegramChatId: chatId.trim(),
+        });
+      } catch (err) {
+        console.warn("[close-case] visit/followup save failed", err);
+      }
+
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const absoluteUrl = `${origin}${upsert.url}`;
+
+      const baseBody = (options?.bodyDraft ?? result.summary.ownerMessage.body)
+        .replace(/\{clinic\}/g, "")
+        .trim();
+      const body = `${baseBody}\n\nPet passport: ${absoluteUrl}`;
+
+      const aftercare =
+        options?.aftercare ?? result.summary.ownerMessage.aftercare;
+
+      const sendRes = await api.telegramSend({
+        chatId: chatId.trim(),
+        body,
+        aftercare,
+        patientId,
+        patientName: patient.name,
+        visitId: result.visitId,
+      });
+
+      flashToast(`Case closed · passport sent to ${patient.owner}`);
+      return { passportUrl: absoluteUrl, messageId: sendRes.messageId };
+    },
+    [patients, flashToast],
+  );
   const approveClear = useCallback((f: FollowUp) => {
     void api.updateFollowup({ id: f.id, status: "clear" }).catch(() => {});
     setFollowups((fs) => fs.filter((x) => x.id !== f.id));
@@ -317,6 +496,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         flashToast,
         expandedPatient,
         setExpandedPatient,
+        closeConsultAndGeneratePassport,
+        newPatientArrival,
+        dismissNewPatientArrival,
+        deletePatient,
         approveClear,
         changeFollowUpLevel,
         updateFollowupDraft,

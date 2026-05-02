@@ -134,7 +134,10 @@ export async function runBillingAgent(input: SessionInput) {
     systemPrompt: SYSTEM_PROMPT,
     userMessage: buildUserMessage(input),
     emitTool: EMIT_TOOL,
-    enableTavily: true,
+    // Tavily disabled — adds 5-15s on most consults and the matrix
+    // already covers routine items. Unmatched items still get
+    // flagged for the doctor to confirm/edit, which is the safer path.
+    enableTavily: false,
     fallback: () => fallback(input),
   });
 }

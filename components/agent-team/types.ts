@@ -44,6 +44,11 @@ export type PipelineEvent =
   | { type: "fanout_completed"; ts: number; latencyMs: number }
   | { type: "orchestrator_started"; ts: number }
   | {
+      type: "orchestrator_delta";
+      ts: number;
+      partial: Partial<SessionCaptureResult["summary"]>;
+    }
+  | {
       type: "orchestrator_completed";
       ts: number;
       meta: SubAgentMeta;

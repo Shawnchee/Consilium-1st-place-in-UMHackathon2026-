@@ -170,6 +170,14 @@ interface RunOrchestratorResult {
   meta: SubAgentMeta;
 }
 
+/**
+ * Partial summary shape emitted as Sonnet streams `emit_session_summary`'s
+ * tool input. Fields appear progressively — anything still being generated
+ * is undefined or partially populated. The consult page can render whatever
+ * is present.
+ */
+export type PartialSessionSummary = Partial<SessionSummaryOutput>;
+
 function fallbackSummary(
   input: SessionInput,
   agg: SessionAggregate,
@@ -221,6 +229,7 @@ function fallbackSummary(
 async function runOrchestrator(
   input: SessionInput,
   agg: SessionAggregate,
+  onDelta?: (partial: PartialSessionSummary) => void,
 ): Promise<RunOrchestratorResult> {
   const startedAt = Date.now();
 
@@ -241,6 +250,12 @@ async function runOrchestrator(
 
   // Cache the orchestrator's system + emit-tool spec — both static across
   // every consult. Only the user message (sub-agent JSON) varies.
+  //
+  // Note: as of 2026-05, the system prompt (~476 tokens) and tool schema
+  // (~600 tokens) are each below the 2048-token Sonnet 4.6 cache minimum,
+  // so cache_creation_input_tokens will be 0 and there is no read benefit.
+  // Markers are kept so caching kicks in automatically if either prefix
+  // grows past 2048 tokens later.
   const cachedSystem: Anthropic.TextBlockParam[] = [
     {
       type: "text",
@@ -252,7 +267,11 @@ async function runOrchestrator(
     { ...EMIT_SUMMARY_TOOL, cache_control: { type: "ephemeral" } },
   ] as Anthropic.Tool[];
 
-  const response = (await c.messages.create({
+  // Stream the response so SOAP / Rx fields render as Sonnet generates
+  // them. The SDK auto-accumulates `input_json_delta` events into the
+  // tool-use block's `.input` object — every `inputJson` callback fires
+  // with the up-to-date partial parse, which we forward via onDelta.
+  const stream = c.messages.stream({
     model: ORCHESTRATOR_MODEL,
     max_tokens: MAX_TOKENS,
     system: cachedSystem,
@@ -262,13 +281,30 @@ async function runOrchestrator(
       name: EMIT_SUMMARY_TOOL.name,
     } as Anthropic.ToolChoice,
     messages: [{ role: "user", content: userMessage }],
-  })) as Anthropic.Message;
+  });
+
+  if (onDelta) {
+    stream.on("inputJson", (_partial, snapshot) => {
+      if (snapshot && typeof snapshot === "object") {
+        try {
+          onDelta(snapshot as PartialSessionSummary);
+        } catch {
+          // delta sink threw — ignore, the final value still wins
+        }
+      }
+    });
+  }
+
+  const response = await stream.finalMessage();
   const usage: TokenUsage = {
     inputTokens: response.usage?.input_tokens ?? 0,
     outputTokens: response.usage?.output_tokens ?? 0,
     cacheCreationTokens: response.usage?.cache_creation_input_tokens ?? 0,
     cacheReadTokens: response.usage?.cache_read_input_tokens ?? 0,
   };
+  console.info(
+    `[orchestrator] usage: in=${usage.inputTokens} out=${usage.outputTokens} cache_create=${usage.cacheCreationTokens} cache_read=${usage.cacheReadTokens}`,
+  );
 
   type Block = { type: string; [k: string]: unknown };
   const blocks = response.content as unknown as Block[];
@@ -277,8 +313,22 @@ async function runOrchestrator(
       b.type === "tool_use" && b.name === EMIT_SUMMARY_TOOL.name,
   );
   if (emit) {
+    const raw = emit.input as unknown as Partial<SessionSummaryOutput>;
+    // Sonnet sometimes omits the pass-through slices (billing/todos/prescription)
+    // even though the schema marks them required — likely because it sees them
+    // already-rendered in the user message and skips the redundant copy. Backfill
+    // from the sub-agent aggregate so the UI never renders an empty card just
+    // because the orchestrator dropped a field.
+    const summary: SessionSummaryOutput = {
+      doctorSummary: raw.doctorSummary!,
+      ownerMessage: raw.ownerMessage!,
+      prescription:
+        raw.prescription ?? agg.prescription?.data?.prescription ?? [],
+      billing: raw.billing ?? agg.billing?.data?.billing ?? [],
+      todos: raw.todos ?? agg.todos?.data?.todos ?? [],
+    };
     return {
-      summary: emit.input as unknown as SessionSummaryOutput,
+      summary,
       meta: {
         agent: "orchestrator",
         model: ORCHESTRATOR_MODEL,
@@ -373,6 +423,11 @@ export type CaptureEvent =
     }
   | { type: "fanout_completed"; ts: number; latencyMs: number }
   | { type: "orchestrator_started"; ts: number }
+  | {
+      type: "orchestrator_delta";
+      ts: number;
+      partial: PartialSessionSummary;
+    }
   | {
       type: "orchestrator_completed";
       ts: number;
@@ -493,7 +548,21 @@ export async function captureSession(
   });
 
   emit({ type: "orchestrator_started", ts: Date.now() });
-  const { summary, meta: orchMeta } = await runOrchestrator(input, aggregate);
+  // Throttle orchestrator_delta to ~10/sec — partial-JSON snapshots fire
+  // once per token from the SDK, which would flood the SSE channel and
+  // cause the browser to spend more time parsing than rendering.
+  let lastDeltaAt = 0;
+  const DELTA_MIN_INTERVAL_MS = 100;
+  const { summary, meta: orchMeta } = await runOrchestrator(
+    input,
+    aggregate,
+    (partial) => {
+      const now = Date.now();
+      if (now - lastDeltaAt < DELTA_MIN_INTERVAL_MS) return;
+      lastDeltaAt = now;
+      emit({ type: "orchestrator_delta", ts: now, partial });
+    },
+  );
   emit({
     type: "orchestrator_completed",
     ts: Date.now(),

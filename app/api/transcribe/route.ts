@@ -38,6 +38,24 @@ export async function POST(req: Request) {
       throw new ApiError(400, "audio file required");
     }
 
+    // Decide the Content-Type to forward to Deepgram. Some browsers /
+    // multipart parsers strip the Blob type to application/octet-stream
+    // — when that happens we infer from the uploaded filename's extension
+    // so Deepgram still gets a useful Content-Type.
+    let contentType = file.type;
+    const fname =
+      file instanceof File ? file.name.toLowerCase() : "";
+    if (!contentType || contentType === "application/octet-stream") {
+      if (fname.endsWith(".ogg")) contentType = "audio/ogg";
+      else if (fname.endsWith(".mp4")) contentType = "audio/mp4";
+      else if (fname.endsWith(".wav")) contentType = "audio/wav";
+      else contentType = "audio/webm";
+    }
+
+    console.log(
+      `[transcribe] received ${file.size}B, file.type="${file.type}", fname="${fname}", forwarding Content-Type="${contentType}"`,
+    );
+
     const params = new URLSearchParams({
       model: ENV.deepgram.model,
       smart_format: "true",
@@ -49,13 +67,16 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         Authorization: `Token ${ENV.deepgram.apiKey}`,
-        "Content-Type": file.type || "audio/webm",
+        "Content-Type": contentType,
       },
       body: await file.arrayBuffer(),
     });
 
     if (!dgRes.ok) {
       const text = await dgRes.text().catch(() => "");
+      console.warn(
+        `[transcribe] deepgram rejected: status=${dgRes.status}, body=${text.slice(0, 300)}`,
+      );
       throw new ApiError(502, `deepgram error ${dgRes.status}: ${text.slice(0, 200)}`);
     }
 

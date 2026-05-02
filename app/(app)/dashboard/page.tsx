@@ -70,7 +70,7 @@ function HeroRow({ escalationCount }: { escalationCount: number }) {
         >
           {CLINIC.name}
           <span style={{ margin: "0 10px", color: C.hint }}>·</span>
-          Tue 21 Apr 2026
+          Mon 1 Dec 2025
         </div>
       </div>
 
@@ -294,7 +294,27 @@ function PatientRow({
   onToggle: () => void;
   index: number;
 }) {
+  const { deletePatient } = useStore();
   const [hover, setHover] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      // Auto-cancel the confirm state if the user wanders off.
+      setTimeout(() => setConfirmingDelete(false), 4000);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deletePatient(p.id);
+    } finally {
+      setDeleting(false);
+      setConfirmingDelete(false);
+    }
+  }
   const [briefReady, setBriefReady] = useState(false);
   useEffect(() => {
     if (!expanded) {
@@ -392,6 +412,34 @@ function PatientRow({
           </div>
         </div>
 
+        {/* Delete affordance — hover-only, two-step confirm to prevent fat-fingers
+            during a live demo. Shrinks to nothing when not hovered to keep the
+            row visually clean. */}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleting}
+          aria-label={confirmingDelete ? `Confirm delete ${p.name}` : `Delete ${p.name}`}
+          style={{
+            opacity: hover || confirmingDelete ? 1 : 0,
+            pointerEvents: hover || confirmingDelete ? "auto" : "none",
+            transition: "opacity 140ms ease",
+            background: confirmingDelete ? C.redLight : "transparent",
+            color: confirmingDelete ? C.red : C.muted,
+            border: `1px solid ${confirmingDelete ? C.redBorder : C.borderSoft}`,
+            borderRadius: 6,
+            padding: confirmingDelete ? "4px 10px" : "4px 8px",
+            fontSize: confirmingDelete ? 11 : 14,
+            fontWeight: confirmingDelete ? 700 : 500,
+            letterSpacing: confirmingDelete ? 1.2 : 0,
+            textTransform: confirmingDelete ? ("uppercase" as const) : "none",
+            cursor: deleting ? "wait" : "pointer",
+            lineHeight: 1,
+          }}
+        >
+          {deleting ? "…" : confirmingDelete ? "Confirm" : "×"}
+        </button>
+
         {/* Brief affordance */}
         <div
           style={{
@@ -463,7 +511,10 @@ function PatientRow({
               gap: 12,
             }}
           >
-            <Link href={`/consult?pid=${encodeURIComponent(p.id)}`} style={{ display: "inline-flex" }}>
+            <Link
+              href={`/consult?pid=${encodeURIComponent(p.id)}`}
+              style={{ display: "inline-flex" }}
+            >
               <span
                 style={{
                   fontSize: 13.5,

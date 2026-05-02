@@ -64,6 +64,47 @@ function OwnerBubble({ turn }: { turn: Extract<ConversationTurn, { role: "owner"
         }}
       >
         &ldquo;{turn.text}&rdquo;
+        {turn.photoUrls && turn.photoUrls.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              marginTop: 10,
+            }}
+          >
+            {turn.photoUrls.map((url, idx) => (
+              <a
+                key={`${url}-${idx}`}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                title="Open full-size in new tab"
+                style={{
+                  display: "block",
+                  width: 88,
+                  height: 88,
+                  borderRadius: 8,
+                  overflow: "hidden",
+                  border: `1px solid ${C.border}`,
+                  background: "#fff",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={`Owner photo ${idx + 1}`}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              </a>
+            ))}
+          </div>
+        )}
         <div
           style={{
             fontFamily: "inherit",
@@ -75,6 +116,9 @@ function OwnerBubble({ turn }: { turn: Extract<ConversationTurn, { role: "owner"
           }}
         >
           {fmtTs(turn.ts)} · via Telegram
+          {turn.photoUrls && turn.photoUrls.length > 0
+            ? ` · ${turn.photoUrls.length} photo${turn.photoUrls.length === 1 ? "" : "s"} attached`
+            : ""}
         </div>
       </blockquote>
     </div>

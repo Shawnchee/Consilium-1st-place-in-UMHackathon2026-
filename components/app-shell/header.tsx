@@ -16,6 +16,7 @@ export default function Header() {
   // Follow-ups now lives on its own dedicated route.
   const tabs = [
     { href: "/dashboard", label: "Dashboard" },
+    { href: "/receptionist", label: "Reception" },
     { href: "/consult", label: "Consult" },
     { href: "/follow-ups", label: "Follow-ups" },
     { href: "/passport", label: "Passports" },

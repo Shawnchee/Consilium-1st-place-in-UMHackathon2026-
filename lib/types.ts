@@ -20,6 +20,8 @@ export interface Patient {
   sex: string;
   owner: string;
   ownerPhone: string;
+  /** Telegram chat ID linked to this patient (numeric or @username). */
+  ownerTelegram?: string | null;
   tag: string;
   tagColor: TagColor;
   reason: string;
@@ -48,7 +50,16 @@ export type ToolName =
  * subsequent turns.
  */
 export type ConversationTurn =
-  | { role: "owner"; text: string; ts: string }
+  | {
+      role: "owner";
+      text: string;
+      ts: string;
+      /** Public URLs of any photos the owner attached to this turn
+       *  (downloaded from Telegram → owner-photos bucket). Used by the
+       *  escalation modal to render thumbnails so the doctor sees what
+       *  the owner saw. */
+      photoUrls?: string[];
+    }
   | {
       role: "bot_tool";
       tool: ToolName;
@@ -143,4 +154,62 @@ export interface CorrectionRow {
   glm: string;
   fix: string;
   who: string;
+}
+
+// ─── Pet passport ──────────────────────────────────────────────────────────
+export type VaxStatus = "ok" | "due" | "overdue";
+
+export interface PassportVaccination {
+  name: string;
+  last: string;
+  next: string;
+  status: VaxStatus;
+}
+
+export interface PassportVisit {
+  date: string;
+  reason: string;
+  outcome: string;
+}
+
+export interface PassportActiveMed {
+  drug: string;
+  dose: string;
+  /** "Day 7 of 7" style label rendered on the right. */
+  progressLabel?: string;
+  /** 0..1 progress bar value. */
+  progress?: number;
+  endsLabel?: string;
+}
+
+export interface PassportLastDiagnosis {
+  title: string;
+  detail: string;
+  bylineDate: string;
+  bylineDoctor: string;
+}
+
+export interface PassportIdentity {
+  name: string;
+  species: string;
+  breed: string;
+  age: string;
+  sex: string;
+  owner: string;
+  ownerPhone: string;
+  microchipId?: string;
+}
+
+export interface PassportPayload {
+  patientId: string;
+  shareUuid: string;
+  /** Display string e.g. "01 Dec 2025" — generated server-side at upsert time. */
+  generatedAt: string;
+  identity: PassportIdentity;
+  vaccinations: PassportVaccination[];
+  visits: PassportVisit[];
+  activeMeds: PassportActiveMed[];
+  lastDiagnosis?: PassportLastDiagnosis;
+  /** Free-form italic blockquote shown to the next vet. */
+  notesForNextVet?: string;
 }

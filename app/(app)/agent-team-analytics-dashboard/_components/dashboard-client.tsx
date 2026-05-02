@@ -38,17 +38,25 @@ const PRICING = {
   sonnet: { input: 3, output: 15 },
 };
 
-const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: string }[] = [
+const DEMO_FIXTURES: {
+  id: string;
+  patientId: string;
+  label: string;
+  notes: string;
+  transcript: string;
+}[] = [
   {
     id: "p1",
-    label: "Milo — ear recheck",
+    patientId: "p1",
+    label: "Milo — pre-cystotomy workup",
     notes:
-      "Right ear externa recheck. Canal still mildly erythematous, less debris than last visit. Continuing Otomax 0.5 mL BID for another 7 days. Recheck cytology in 2 weeks. Annual DHPP + Lepto due — administered today.",
+      "8yo MN Mini Schnauzer, 9.8kg. 2-wk haematuria + straining. External clinic 1 week ago: amox-clav 250mg BID x7d + Royal Canin Urinary SO — no improvement. QAR. T 38.7, HR 110, RR 28. Mild caudal abdominal discomfort. Abdominal X-ray: 2 large cystoliths nearly filling bladder + multiple uroliths along urethra. Pre-op bloods + urine C/S today. NPO from 22:00. Cystotomy 02 Dec 09:00.",
     transcript:
-      "Owner: He's been so much better since last week, scratching way less. I just wanted to make sure the ear is fully clear before stopping. Also remembered the vaccine was overdue.",
+      "Owner: He's been straining and there's blood in his pee for two weeks. The other clinic gave us antibiotics and that special urinary food a week ago, but it hasn't really helped. He's still eating and drinking, just uncomfortable when he tries to pee.",
   },
   {
     id: "p2",
+    patientId: "p2",
     label: "Luna — anorexia 48h",
     notes:
       "2-day anorexia, no vomiting, normal water intake. Mild dental tartar grade 2. T 38.9, HR 180, RR 28. Recommended bloods + imaging. Started SC fluids 80 mL Hartmann's, Cerenia 1 mg/kg SC. Bland diet dispensed.",
@@ -57,11 +65,27 @@ const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: str
   },
   {
     id: "p3",
+    patientId: "p3",
     label: "Rex — CCL post-op D3",
     notes:
       "TPLO right stifle day 3. Incision clean, no swelling or discharge. Weight-bearing 30% on RH. Continuing Meloxicam 0.1 mg/kg PO SID + Gabapentin 10 mg/kg PO TID. Owner reports good icing compliance. Recheck D14 for suture removal.",
     transcript:
       "Owner: He's doing the icing twice a day like you said. Sleeping on his side, only stands when I take him out. The cone is annoying him but it's staying on.",
+  },
+  {
+    // Designed to actually trigger Tavily on the prescription agent.
+    // Onsior (robenacoxib) is a COX-2-selective veterinary NSAID — NOT in
+    // the BILLING_MATRIX, raises species-safety + post-cystotomy duration
+    // questions the prescription-agent prompt explicitly considers
+    // Tavily-worthy. Use this fixture in the demo to prove the live
+    // web-search lights up for non-routine cases.
+    id: "p1-onsior",
+    patientId: "p1",
+    label: "Milo — Onsior post-op question (Tavily demo)",
+    notes:
+      "Owner asking about switching Milo from Meloxicam to Onsior (robenacoxib) for post-cystotomy pain — read it's gentler on the kidneys. Confirm current canine safety profile, dose for 9.8kg dog, recommended post-op duration, and any active recalls before tomorrow's surgery.",
+    transcript:
+      "Owner: My friend's vet uses Onsior for her dog after surgery and says it's better on the kidneys than Meloxicam. Can we use that for Milo instead? I'm worried because he's older and the stones might have already strained things.",
   },
 ];
 
@@ -76,7 +100,7 @@ export default function AgentDashboardClient() {
   async function runPipeline() {
     const f = DEMO_FIXTURES.find((x) => x.id === fixture)!;
     await stream.start({
-      patientId: f.id,
+      patientId: f.patientId,
       notes: f.notes,
       transcript: f.transcript,
     });

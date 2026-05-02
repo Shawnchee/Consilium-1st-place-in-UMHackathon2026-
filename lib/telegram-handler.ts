@@ -183,6 +183,64 @@ export async function handleOwnerMessage(
     } catch (err) {
       console.warn("[telegram-handler] followup lookup failed", err);
     }
+
+    // Fallback: no followup matched the chat, but maybe the doctor
+    // linked this chat to a patient via the consult page (sets
+    // patients.owner_telegram). Find that patient → most recent
+    // visit → create the followup on the fly so the bot can triage.
+    // This is what makes "Link Telegram" in the consult header
+    // sufficient; no manual SQL or extra clicks required.
+    if (!row) {
+      try {
+        const db = getSupabaseServer();
+        const { data: patient } = await db
+          .from("patients")
+          .select("id, name")
+          .eq("owner_telegram", chatId)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle<{ id: string; name: string }>();
+        if (patient) {
+          const { data: visit } = await db
+            .from("visits")
+            .select("id")
+            .eq("patient_id", patient.id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle<{ id: string }>();
+          if (visit) {
+            const { data: created } = await db
+              .from("followups")
+              .insert({
+                visit_id: visit.id,
+                status: "pending",
+                telegram_chat_id: chatId,
+              })
+              .select(
+                "id, conversation, tool_call_count, visits!inner(patient_id, patients!inner(name))",
+              )
+              .maybeSingle<FollowupRowMini>();
+            if (created) {
+              row = created;
+              console.log(
+                `\x1b[36m[bot]\x1b[0m auto-linked chat ${chatId} → patient ${patient.name} (visit ${visit.id.slice(0, 8)}…)`,
+              );
+            }
+          } else {
+            // Patient is linked but has no visits yet — the doctor
+            // hasn't completed a consult. Reply with a friendly
+            // holding message instead of the generic unlinked help.
+            logInbound(chatId, text, 0);
+            return {
+              reply: `Hi! ${patient.name} is on file at ${ENV.clinic.name}, but the doctor hasn't completed a visit yet. We'll be in touch after your appointment. — ${ENV.clinic.name}`,
+              decision: "unlinked",
+            };
+          }
+        }
+      } catch (err) {
+        console.warn("[telegram-handler] patient fallback lookup failed", err);
+      }
+    }
   }
 
   if (!row) {
@@ -223,6 +281,7 @@ export async function handleOwnerMessage(
     role: "owner",
     text: photoUrls.length > 0 ? `${text}  [photo: ${photoUrls.length}]` : text,
     ts: nowIso(),
+    photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
   };
 
   const result = await runTriage({

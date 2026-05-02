@@ -16,6 +16,7 @@ import {
   useCaptureStream,
 } from "@/components/agent-team";
 import { api } from "@/lib/api";
+import { Skeleton } from "@/components/app-shell/skeleton";
 import { C, FONT_MONO, FONT_SERIF, SHADOW_CARD } from "@/lib/tokens";
 import type {
   BillingItem,
@@ -32,14 +33,31 @@ import { CLINIC } from "@/lib/clinic";
 // ─────────────────────────────────────────────────────────────────────
 const SCENARIOS: { id: string; label: string; blurb: string; text: string }[] = [
   {
-    id: "ccl",
-    label: "CCL partial tear (Milo)",
-    blurb: "Right hind limp, 2wk · canonical F2 example",
+    id: "leo-uro",
+    label: "Urinary obstruction (Leo, demo)",
+    blurb: "Stranguria + struvite crystals · explicit Rx for demo",
     text:
-      "Came in for limping on right hind for past 2 weeks. Worse on stairs. No trauma witnessed. " +
-      "Palpated right stifle — pain response, mild joint effusion. Positive cranial drawer, partial. " +
-      "Doing rads today, lateral + caudocranial. Send home with Meloxicam 0.1mg/kg SID x7d, gabapentin for comfort. " +
-      "E-collar. Strict rest 14 days. Recheck in 7.",
+      "T 38.7°C, HR 105, BAR. BW 22kg. Bladder firm + tender on palpation. " +
+      "Penile exam: small grit at urethral opening. Urinalysis: pH 8.0, struvite crystals heavy, +3 blood, no growth on rapid culture. " +
+      "Plan: hospitalise overnight.\n\n" +
+      "Prescription:\n" +
+      "- Hartmann's solution IV 2.5 mL/kg/hr x 12 hours (in-clinic, dispense 0)\n" +
+      "- Buprenorphine 0.02 mg/kg IV q6h x 24 hours, dispense 1.5 mL of 0.3 mg/mL injectable\n" +
+      "- Meloxicam 0.1 mg/kg PO SID x 5 days, dispense 5 mL of 1.5 mg/mL oral suspension\n" +
+      "- Royal Canin Urinary SO 4 kg, dispense 1 bag\n\n" +
+      "Urethral cath if obstruction worsens. X-ray + ultrasound tomorrow morning. Discussed cystotomy possibility with owner. Recheck 48h post-op or sooner if straining recurs.",
+  },
+  {
+    id: "cysto",
+    label: "Cystoliths pre-op (Milo)",
+    blurb: "Bladder stones, surgery tomorrow · X-ray + bloods today",
+    text:
+      "Milo, 8yo MN Mini Schnauzer, 9.8kg. 2-week history of haematuria + straining. " +
+      "Owner went to external clinic 1 week ago — prescribed amox-clav 250mg BID x7d + Royal Canin Urinary SO. " +
+      "No improvement. QAR. T 38.7, HR 110, RR 28. Mild caudal abdominal discomfort. " +
+      "Abdominal X-ray: 2 large cystoliths nearly filling bladder, multiple smaller uroliths scattered along urethra. " +
+      "Plan: pre-op bloods + urine C/S today, NPO from 22:00, cystotomy 02 Dec 09:00. " +
+      "Submit stones for analysis post-op. Continue Urinary SO pending result.",
   },
   {
     id: "otitis",
@@ -142,17 +160,72 @@ function OutputCardShell({
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Shared edit-mode inputs — flat, hairline, matches card aesthetic
+// ─────────────────────────────────────────────────────────────────────
+const editInputStyle = {
+  width: "100%",
+  padding: "6px 8px",
+  fontSize: 13,
+  fontFamily: FONT_MONO,
+  color: C.text,
+  background: "#fff",
+  border: `1px solid ${C.border}`,
+  borderRadius: 4,
+  outline: "none",
+  boxSizing: "border-box" as const,
+};
+
+function RowDeleteButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Remove row"
+      style={{
+        width: 22,
+        height: 22,
+        display: "inline-grid",
+        placeItems: "center",
+        background: "transparent",
+        border: `1px solid ${C.border}`,
+        borderRadius: 4,
+        color: C.muted,
+        cursor: "pointer",
+        fontSize: 14,
+        lineHeight: 1,
+        padding: 0,
+        flexShrink: 0,
+      }}
+    >
+      ×
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // SOAP
 // ─────────────────────────────────────────────────────────────────────
-function SoapCard({ s, onEdit }: { s: SoapNote; onEdit: (s: SoapNote) => void }) {
+function SoapCard({
+  s,
+  onSave,
+}: {
+  s: SoapNote;
+  onSave: (next: SoapNote) => void;
+}) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(s);
+  const [draft, setDraft] = useState<SoapNote>(s);
+  useEffect(() => {
+    setDraft(s);
+    setEditing(false);
+  }, [s]);
+
   const rows: { k: "S" | "O" | "A" | "P"; v: string }[] = [
-    { k: "S", v: s.S },
-    { k: "O", v: s.O },
-    { k: "A", v: s.A },
-    { k: "P", v: s.P },
+    { k: "S", v: editing ? draft.S : s.S },
+    { k: "O", v: editing ? draft.O : s.O },
+    { k: "A", v: editing ? draft.A : s.A },
+    { k: "P", v: editing ? draft.P : s.P },
   ];
+
   return (
     <OutputCardShell
       title="SOAP note"
@@ -161,30 +234,26 @@ function SoapCard({ s, onEdit }: { s: SoapNote; onEdit: (s: SoapNote) => void })
       footer={
         <>
           <div style={{ flex: 1 }} />
-          {editing ? (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => { setDraft(s); setEditing(false); }}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit</Button>
-            </>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={editing ? Icon.check(13) : Icon.edit(13)}
+            onClick={() => {
+              if (editing) {
+                onSave(draft);
+                setEditing(false);
+              } else {
+                setDraft(s);
+                setEditing(true);
+              }
+            }}
+          >
+            {editing ? "Done" : "Edit"}
+          </Button>
         </>
       }
     >
-      {editing ? (
-        <div style={{ display: "grid", gap: 14, padding: "10px 0" }}>
-          {(["S", "O", "A", "P"] as const).map(k => (
-            <div key={k} style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 14 }}>
-              <span style={{ fontFamily: FONT_MONO, fontSize: 11, fontWeight: 700, color: C.muted, display: "inline-grid", placeItems: "center", width: 24, height: 22, border: `1px solid ${C.border}`, borderRadius: 4 }}>{k}</span>
-              <textarea value={draft[k]} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))} style={{ width: "100%", padding: "8px 12px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, fontFamily: "inherit", minHeight: 60 }} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        rows.map((r, i) => (
+      {rows.map((r, i) => (
         <div
           key={r.k}
           style={{
@@ -213,16 +282,33 @@ function SoapCard({ s, onEdit }: { s: SoapNote; onEdit: (s: SoapNote) => void })
           >
             {r.k}
           </span>
-          <div style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>
-            <StreamedText
-              text={r.v}
-              chunkSize={2}
-              intervalMs={35}
-              startDelayMs={220 + i * 180}
+          {editing ? (
+            <textarea
+              value={r.v}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, [r.k]: e.target.value }))
+              }
+              rows={Math.max(2, Math.min(8, r.v.split("\n").length + 1))}
+              style={{
+                ...editInputStyle,
+                fontFamily: "inherit",
+                fontSize: 14,
+                lineHeight: 1.5,
+                resize: "vertical",
+              }}
             />
-          </div>
+          ) : (
+            <div style={{ fontSize: 14, lineHeight: 1.6, color: C.text }}>
+              <StreamedText
+                text={r.v}
+                chunkSize={2}
+                intervalMs={35}
+                startDelayMs={220 + i * 180}
+              />
+            </div>
+          )}
         </div>
-      )))}
+      ))}
     </OutputCardShell>
   );
 }
@@ -232,53 +318,72 @@ function SoapCard({ s, onEdit }: { s: SoapNote; onEdit: (s: SoapNote) => void })
 // ─────────────────────────────────────────────────────────────────────
 function PrescriptionCard({
   rx,
-  onEdit,
+  onSave,
 }: {
   rx: PrescriptionItem[];
-  onEdit: (rx: PrescriptionItem[]) => void;
+  onSave: (next: PrescriptionItem[]) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(rx);
+  const [draft, setDraft] = useState<PrescriptionItem[]>(rx);
+  useEffect(() => {
+    setDraft(rx);
+    setEditing(false);
+  }, [rx]);
+
+  const view = editing ? draft : rx;
+  const updateRow = (i: number, patch: Partial<PrescriptionItem>) =>
+    setDraft((d) => d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  const removeRow = (i: number) =>
+    setDraft((d) => d.filter((_, idx) => idx !== i));
+  const addRow = () =>
+    setDraft((d) => [...d, { drug: "", dose: "", dur: "", qty: "" }]);
 
   return (
     <OutputCardShell
       title="Prescription"
-      meta={`${rx.length} drug${rx.length === 1 ? "" : "s"}`}
+      meta={`${view.length} drug${view.length === 1 ? "" : "s"}`}
       delay={90}
       footer={
         <>
-          <div style={{ flex: 1 }} />
-          {editing ? (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => { setDraft(rx); setEditing(false); }}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit / Add</Button>
-            </>
+          {editing && (
+            <Button variant="soft" size="sm" onClick={addRow}>
+              + Add Rx
+            </Button>
           )}
+          <div style={{ flex: 1 }} />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={editing ? Icon.check(13) : Icon.edit(13)}
+            onClick={() => {
+              if (editing) {
+                onSave(draft);
+                setEditing(false);
+              } else {
+                setDraft(rx);
+                setEditing(true);
+              }
+            }}
+          >
+            {editing ? "Done" : "Edit"}
+          </Button>
         </>
       }
     >
-      {editing ? (
-        <div style={{ display: "grid", gap: 14, padding: "10px 0" }}>
-          {draft.map((r, i) => (
-            <div key={i} style={{ display: "grid", gap: 8, paddingBottom: 10, borderBottom: i < draft.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
-              <input value={r.drug} onChange={e => { const n = [...draft]; n[i].drug = e.target.value; setDraft(n); }} placeholder="Drug name" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-                <input value={r.dose} onChange={e => { const n = [...draft]; n[i].dose = e.target.value; setDraft(n); }} placeholder="Dose" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, fontFamily: "inherit" }} />
-                <input value={r.dur} onChange={e => { const n = [...draft]; n[i].dur = e.target.value; setDraft(n); }} placeholder="Duration" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, fontFamily: "inherit" }} />
-                <input value={r.qty} onChange={e => { const n = [...draft]; n[i].qty = e.target.value; setDraft(n); }} placeholder="Qty" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, fontFamily: "inherit" }} />
-              </div>
-            </div>
-          ))}
-          <Button variant="ghost" size="sm" onClick={() => setDraft([...draft, { drug: "", dose: "", dur: "", qty: "" }])}>
-            + Add drug
-          </Button>
+      {view.length === 0 && (
+        <div
+          style={{
+            padding: "16px 0 4px",
+            fontSize: 13,
+            color: C.muted,
+            fontStyle: "italic",
+            textAlign: "center",
+          }}
+        >
+          No medications prescribed for this visit.
         </div>
-      ) : (
-        rx.map((r, i) => (
+      )}
+      {view.map((r, i) => (
         <div
           key={i}
           style={{
@@ -288,14 +393,34 @@ function PrescriptionCard({
         >
           <div
             style={{
-              fontFamily: FONT_MONO,
-              fontSize: 13.5,
-              fontWeight: 700,
-              color: C.text,
-              letterSpacing: -0.1,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            {r.drug}
+            {editing ? (
+              <input
+                type="text"
+                value={r.drug}
+                onChange={(e) => updateRow(i, { drug: e.target.value })}
+                placeholder="Drug name"
+                style={{ ...editInputStyle, fontWeight: 700, fontSize: 13.5 }}
+              />
+            ) : (
+              <div
+                style={{
+                  flex: 1,
+                  fontFamily: FONT_MONO,
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  color: C.text,
+                  letterSpacing: -0.1,
+                }}
+              >
+                {r.drug}
+              </div>
+            )}
+            {editing && <RowDeleteButton onClick={() => removeRow(i)} />}
           </div>
           <div
             style={{
@@ -305,11 +430,13 @@ function PrescriptionCard({
               marginTop: 8,
             }}
           >
-            {[
-              { k: "Dose", v: r.dose },
-              { k: "Duration", v: r.dur },
-              { k: "Qty", v: r.qty },
-            ].map((f) => (
+            {(
+              [
+                { k: "Dose", field: "dose" as const, v: r.dose },
+                { k: "Duration", field: "dur" as const, v: r.dur },
+                { k: "Qty", field: "qty" as const, v: r.qty },
+              ]
+            ).map((f) => (
               <div key={f.k}>
                 <div
                   style={{
@@ -322,21 +449,32 @@ function PrescriptionCard({
                 >
                   {f.k}
                 </div>
-                <div
-                  style={{
-                    fontFamily: FONT_MONO,
-                    fontSize: 12.5,
-                    color: C.text,
-                    marginTop: 3,
-                  }}
-                >
-                  {f.v}
-                </div>
+                {editing ? (
+                  <input
+                    type="text"
+                    value={f.v}
+                    onChange={(e) =>
+                      updateRow(i, { [f.field]: e.target.value })
+                    }
+                    style={{ ...editInputStyle, marginTop: 3 }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      fontFamily: FONT_MONO,
+                      fontSize: 12.5,
+                      color: C.text,
+                      marginTop: 3,
+                    }}
+                  >
+                    {f.v}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         </div>
-      )))}
+      ))}
     </OutputCardShell>
   );
 }
@@ -346,93 +484,173 @@ function PrescriptionCard({
 // ─────────────────────────────────────────────────────────────────────
 function BillingCard({
   items,
-  onEdit,
+  onSave,
 }: {
   items: BillingItem[];
-  onEdit: (items: BillingItem[]) => void;
+  onSave: (next: BillingItem[]) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(items);
+  const [draft, setDraft] = useState<BillingItem[]>(items);
+  // Tick-list state — doctor checks off each item as they confirm it
+  // was actually billed. Resets when a new pipeline run lands (the
+  // items array identity changes via the parent's useMemo).
+  const [checked, setChecked] = useState<Record<number, boolean>>({});
+  useEffect(() => {
+    setChecked({});
+    setDraft(items);
+    setEditing(false);
+  }, [items]);
 
-  useEffect(() => setDraft(items), [items]);
+  const view = editing ? draft : items;
+  const tickCount = Object.values(checked).filter(Boolean).length;
 
-  const selectedCount = items.filter(i => i.selected === true).length;
+  const updateRow = (i: number, patch: Partial<BillingItem>) =>
+    setDraft((d) => d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  const removeRow = (i: number) =>
+    setDraft((d) => d.filter((_, idx) => idx !== i));
+  const addRow = () =>
+    setDraft((d) => [...d, { item: "", price: 0, flagged: false, note: "" }]);
 
   return (
     <OutputCardShell
-      title="Procedures / Medications"
-      meta={`${selectedCount} checked`}
+      title="Billing recovery"
+      meta={
+        editing
+          ? `${view.length} item${view.length === 1 ? "" : "s"}`
+          : `${tickCount} of ${view.length} ticked`
+      }
       delay={180}
       footer={
         <>
-          <div style={{ flex: 1 }} />
-          {editing ? (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => { setDraft(items); setEditing(false); }}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit / Add</Button>
-            </>
+          {editing && (
+            <Button variant="soft" size="sm" onClick={addRow}>
+              + Add item
+            </Button>
           )}
+          <div style={{ flex: 1 }} />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={editing ? Icon.check(13) : Icon.edit(13)}
+            onClick={() => {
+              if (editing) {
+                onSave(draft);
+                setEditing(false);
+              } else {
+                setDraft(items);
+                setEditing(true);
+              }
+            }}
+          >
+            {editing ? "Done" : "Edit"}
+          </Button>
         </>
       }
     >
-      {editing ? (
-        <div style={{ display: "grid", gap: 10, padding: "10px 0" }}>
-          {draft.map((it, i) => (
-            <div key={i} style={{ display: "flex", gap: 10 }}>
-              <input value={it.item} onChange={e => { const n = [...draft]; n[i].item = e.target.value; setDraft(n); }} placeholder="Item name" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
-            </div>
-          ))}
-          <Button variant="ghost" size="sm" onClick={() => setDraft([...draft, { item: "", price: 0, flagged: false, note: "", selected: true }])}>
-            + Add item
-          </Button>
+      {view.length === 0 && (
+        <div
+          style={{
+            padding: "16px 0 4px",
+            fontSize: 13,
+            color: C.muted,
+            fontStyle: "italic",
+            textAlign: "center",
+          }}
+        >
+          No billable items captured for this visit.
         </div>
-      ) : (
-        items.map((it, i) => {
-          const isSelected = it.selected === true;
+      )}
+      {view.map((it, i) => {
+        if (editing) {
           return (
             <div
               key={i}
-              onClick={() => {
-                 const n = [...items];
-                 n[i] = { ...n[i], selected: !isSelected };
-                 onEdit(n);
-              }}
               style={{
-                display: "flex",
+                display: "grid",
+                gridTemplateColumns: "1fr auto auto",
+                gap: 8,
                 alignItems: "center",
-                gap: 12,
                 padding: "10px 0",
-                cursor: "pointer",
                 borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
               }}
             >
-              <div
+              <input
+                type="text"
+                value={it.item}
+                onChange={(e) => updateRow(i, { item: e.target.value })}
+                placeholder="Billable item"
+                style={editInputStyle}
+              />
+              <button
+                type="button"
+                onClick={() => updateRow(i, { flagged: !it.flagged })}
                 style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 4,
-                  border: `1.5px solid ${isSelected ? C.green : C.border}`,
-                  background: isSelected ? C.green : "transparent",
-                  color: "#fff",
-                  display: "grid",
-                  placeItems: "center",
-                  flexShrink: 0,
-                  transition: "all 140ms ease",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  fontSize: 10.5,
+                  fontWeight: 600,
+                  letterSpacing: 0.3,
+                  color: it.flagged ? C.amber : C.muted,
+                  border: `1px solid ${it.flagged ? C.amberBorder : C.border}`,
+                  borderRadius: 999,
+                  background: "transparent",
+                  cursor: "pointer",
                 }}
               >
-                {isSelected && Icon.check(11)}
-              </div>
+                {Icon.warn(10)} {it.flagged ? "Flagged" : "Flag"}
+              </button>
+              <RowDeleteButton onClick={() => removeRow(i)} />
+            </div>
+          );
+        }
+        const isChecked = !!checked[i];
+        const toggle = () =>
+          setChecked((prev) => ({ ...prev, [i]: !prev[i] }));
+        return (
+          <label
+            key={i}
+            htmlFor={`bill-${i}`}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "20px 1fr",
+              gap: 12,
+              alignItems: "start",
+              padding: "10px 12px",
+              marginLeft: -8,
+              marginRight: -8,
+              marginBottom: 2,
+              borderRadius: 8,
+              borderLeft: it.flagged
+                ? `2px solid ${C.amber}`
+                : `2px solid transparent`,
+              background: isChecked ? C.bgAlt : "transparent",
+              cursor: "pointer",
+              transition: "background 140ms ease",
+            }}
+          >
+            <input
+              id={`bill-${i}`}
+              type="checkbox"
+              checked={isChecked}
+              onChange={toggle}
+              style={{
+                width: 16,
+                height: 16,
+                marginTop: 3,
+                cursor: "pointer",
+                accentColor: C.brand,
+              }}
+            />
+            <div style={{ minWidth: 0 }}>
               <div
                 style={{
-                  flex: 1,
                   fontSize: 13.5,
-                  color: isSelected ? C.text : C.muted,
-                  textDecoration: "none",
-                  lineHeight: 1.4,
+                  color: isChecked ? C.muted : C.text,
+                  fontWeight: it.flagged ? 600 : 500,
+                  textDecorationLine: isChecked ? "line-through" : "none",
+                  textDecorationColor: C.muted,
                 }}
               >
                 {it.item}
@@ -443,6 +661,7 @@ function BillingCard({
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 5,
+                    marginTop: 5,
                     padding: "2px 8px",
                     fontSize: 10.5,
                     fontWeight: 600,
@@ -451,15 +670,16 @@ function BillingCard({
                     border: `1px solid ${C.amberBorder}`,
                     borderRadius: 999,
                     background: "transparent",
+                    opacity: isChecked ? 0.5 : 1,
                   }}
                 >
-                  {Icon.warn(10)} In notes
+                  {Icon.warn(10)} In notes, not yet billed
                 </div>
               )}
             </div>
-          );
-        })
-      )}
+          </label>
+        );
+      })}
     </OutputCardShell>
   );
 }
@@ -467,96 +687,159 @@ function BillingCard({
 // ─────────────────────────────────────────────────────────────────────
 // Todos
 // ─────────────────────────────────────────────────────────────────────
-function TodoCard({ todos, onEdit }: { todos: TodoItem[]; onEdit: (todos: TodoItem[]) => void; }) {
-  const [done, setDone] = useState<Record<number, boolean>>({});
+function TodoCard({
+  todos,
+  onSave,
+}: {
+  todos: TodoItem[];
+  onSave: (next: TodoItem[]) => void;
+}) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(todos);
+  const [draft, setDraft] = useState<TodoItem[]>(todos);
+  const [done, setDone] = useState<Record<number, boolean>>({});
+  useEffect(() => {
+    setDone({});
+    setDraft(todos);
+    setEditing(false);
+  }, [todos]);
 
+  const view = editing ? draft : todos;
   const assigneeTone = (who: string): "green" | "amber" | "neutral" => {
     const w = who.toLowerCase();
     if (w.includes("vet") || w.includes("doctor")) return "green";
     if (w.includes("nurse")) return "amber";
     return "neutral";
   };
+
+  const updateRow = (i: number, patch: Partial<TodoItem>) =>
+    setDraft((d) => d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  const removeRow = (i: number) =>
+    setDraft((d) => d.filter((_, idx) => idx !== i));
+  const addRow = () => setDraft((d) => [...d, { task: "", who: "" }]);
+
   return (
     <OutputCardShell
       title="Staff to-do"
-      meta={`${todos.length} tasks`}
+      meta={`${view.length} tasks`}
       delay={270}
       footer={
         <>
-          <div style={{ flex: 1 }} />
-          {editing ? (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => { setDraft(todos); setEditing(false); }}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit / Add</Button>
-            </>
+          {editing && (
+            <Button variant="soft" size="sm" onClick={addRow}>
+              + Add task
+            </Button>
           )}
+          <div style={{ flex: 1 }} />
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={editing ? Icon.check(13) : Icon.edit(13)}
+            onClick={() => {
+              if (editing) {
+                onSave(draft);
+                setEditing(false);
+              } else {
+                setDraft(todos);
+                setEditing(true);
+              }
+            }}
+          >
+            {editing ? "Done" : "Edit"}
+          </Button>
         </>
       }
     >
-      {editing ? (
-        <div style={{ display: "grid", gap: 10, padding: "10px 0" }}>
-          {draft.map((t, i) => (
-            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 10 }}>
-              <input value={t.task} onChange={e => { const n = [...draft]; n[i].task = e.target.value; setDraft(n); }} placeholder="Task description" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
-              <input value={t.who} onChange={e => { const n = [...draft]; n[i].who = e.target.value; setDraft(n); }} placeholder="Assignee" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
-            </div>
-          ))}
-          <Button variant="ghost" size="sm" onClick={() => setDraft([...draft, { task: "", who: "" }])}>
-            + Add task
-          </Button>
-        </div>
-      ) : (
-        todos.map((t, i) => (
+      {view.length === 0 && (
         <div
-          key={i}
-          onClick={() => setDone((d) => ({ ...d, [i]: !d[i] }))}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "10px 0",
-            cursor: "pointer",
-            borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
+            padding: "16px 0 4px",
+            fontSize: 13,
+            color: C.muted,
+            fontStyle: "italic",
+            textAlign: "center",
           }}
         >
-          <div
-            style={{
-              width: 18,
-              height: 18,
-              borderRadius: 4,
-              border: `1.5px solid ${done[i] ? C.green : C.border}`,
-              background: done[i] ? C.green : "transparent",
-              color: "#fff",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
-              transition: "all 140ms ease",
-            }}
-          >
-            {done[i] && Icon.check(11)}
-          </div>
-          <div
-            style={{
-              flex: 1,
-              fontSize: 13.5,
-              color: done[i] ? C.muted : C.text,
-              textDecoration: done[i] ? "line-through" : "none",
-              lineHeight: 1.4,
-            }}
-          >
-            {t.task}
-          </div>
-          <Pill tone={assigneeTone(t.who)} style={{ fontSize: 11, padding: "2px 9px" }}>
-            {t.who}
-          </Pill>
+          No staff to-dos generated for this visit.
         </div>
-      )))}
+      )}
+      {view.map((t, i) => {
+        if (editing) {
+          return (
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 140px auto",
+                gap: 8,
+                alignItems: "center",
+                padding: "10px 0",
+                borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
+              }}
+            >
+              <input
+                type="text"
+                value={t.task}
+                onChange={(e) => updateRow(i, { task: e.target.value })}
+                placeholder="Task"
+                style={editInputStyle}
+              />
+              <input
+                type="text"
+                value={t.who}
+                onChange={(e) => updateRow(i, { who: e.target.value })}
+                placeholder="Assignee"
+                style={editInputStyle}
+              />
+              <RowDeleteButton onClick={() => removeRow(i)} />
+            </div>
+          );
+        }
+        return (
+          <div
+            key={i}
+            onClick={() => setDone((d) => ({ ...d, [i]: !d[i] }))}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 0",
+              cursor: "pointer",
+              borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
+            }}
+          >
+            <div
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 4,
+                border: `1.5px solid ${done[i] ? C.green : C.border}`,
+                background: done[i] ? C.green : "transparent",
+                color: "#fff",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+                transition: "all 140ms ease",
+              }}
+            >
+              {done[i] && Icon.check(11)}
+            </div>
+            <div
+              style={{
+                flex: 1,
+                fontSize: 13.5,
+                color: done[i] ? C.muted : C.text,
+                textDecorationLine: done[i] ? "line-through" : "none",
+                lineHeight: 1.4,
+              }}
+            >
+              {t.task}
+            </div>
+            <Pill tone={assigneeTone(t.who)} style={{ fontSize: 11, padding: "2px 9px" }}>
+              {t.who}
+            </Pill>
+          </div>
+        );
+      })}
     </OutputCardShell>
   );
 }
@@ -758,6 +1041,11 @@ type MedSchedulePayload = {
   end_date: string;
   meal_relation: "before_meal" | "after_meal" | "none";
   notes: string;
+  agentFollowup?: {
+    daysBetween: number;
+    firstCheckIn: string;
+    message: string;
+  };
 };
 
 const MED_PRESETS: {
@@ -818,11 +1106,131 @@ function ChipBtn({
   );
 }
 
+/**
+ * Parse a prescription dose string for its frequency marker and return
+ * the matching preset id + suggested times. Handles common veterinary
+ * shorthand: SID/q24h (1x), BID/q12h (2x), TID/q8h (3x), QID/q6h (4x),
+ * "every 8 hours" (3x), etc. Falls back to "once_daily" if nothing
+ * matches so the schedule is never empty.
+ */
+function parseRxFrequency(dose: string): {
+  preset: (typeof MED_PRESETS)[number]["id"];
+  times: string[];
+  intervalHours: number;
+} {
+  const d = dose.toLowerCase();
+  if (/\bqid\b|\bq6h?\b|every\s*6\s*h(?:our)?s?/.test(d))
+    return { preset: "every_8h", times: ["00:00", "06:00", "12:00", "18:00"], intervalHours: 6 };
+  if (/\btid\b|\bq8h?\b|every\s*8\s*h(?:our)?s?/.test(d))
+    return { preset: "every_8h", times: ["08:00", "16:00", "00:00"], intervalHours: 8 };
+  if (/\bbid\b|\bq12h?\b|twice\s*(?:a\s*)?(?:day|daily)/.test(d))
+    return { preset: "twice_daily", times: ["08:00", "20:00"], intervalHours: 12 };
+  if (/\bsid\b|\bq24h?\b|once\s*(?:a\s*)?(?:day|daily)|\bod\b/.test(d))
+    return { preset: "once_daily", times: ["08:00"], intervalHours: 24 };
+  if (/\bprn\b|as\s*needed/.test(d))
+    return { preset: "once_daily", times: ["08:00"], intervalHours: 24 };
+  return { preset: "once_daily", times: ["08:00"], intervalHours: 24 };
+}
+
+/** Parse a duration string like "7 days", "2 weeks", "5d" → number of days. */
+function parseRxDuration(dur: string): number {
+  const m = dur.toLowerCase().match(/(\d+)\s*(d|day|days|w|wk|week|weeks)/);
+  if (!m) return 7;
+  const n = parseInt(m[1], 10);
+  if (!Number.isFinite(n)) return 7;
+  if (/w/.test(m[2])) return n * 7;
+  return n;
+}
+
+/**
+ * Send-now row used inside the medication schedule card. Renders a
+ * primary button that fires a one-shot Telegram message via
+ * /api/consult/telegram-send and shows immediate status feedback. For
+ * demo / testing only — production flow goes through the actual
+ * scheduled cron, not on-demand.
+ */
+function SendNowRow({
+  label,
+  disabled,
+  state,
+  onSend,
+  hint,
+}: {
+  label: string;
+  disabled: boolean;
+  state:
+    | { kind: "idle" }
+    | { kind: "sending" }
+    | { kind: "sent"; messageId: number }
+    | { kind: "error"; message: string };
+  onSend: () => void;
+  hint?: string;
+}) {
+  return (
+    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+      <button
+        type="button"
+        onClick={onSend}
+        disabled={disabled || state.kind === "sending"}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          padding: "9px 14px",
+          borderRadius: 8,
+          background:
+            disabled || state.kind === "sending" ? C.borderSoft : C.brand,
+          color:
+            disabled || state.kind === "sending" ? C.muted : "#FFFFFF",
+          border: "none",
+          fontSize: 13,
+          fontWeight: 600,
+          cursor:
+            disabled || state.kind === "sending" ? "not-allowed" : "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        {state.kind === "sending" ? "Sending…" : label}
+      </button>
+      {state.kind === "sent" && (
+        <div
+          style={{
+            fontSize: 11.5,
+            color: C.greenDark,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          ✓ Sent · message #{state.messageId}
+        </div>
+      )}
+      {state.kind === "error" && (
+        <div style={{ fontSize: 11.5, color: C.red }}>{state.message}</div>
+      )}
+      {state.kind === "idle" && hint && (
+        <div style={{ fontSize: 11, color: C.hint }}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
 function MedicationScheduleCard({
   patient,
+  prescription,
+  chatId,
   onSubmit,
 }: {
   patient: Patient;
+  /** Live prescription items from the orchestrator output. Used to
+   *  pre-populate the schedule frequency + duration so the doctor
+   *  doesn't re-enter what's already in the Rx card above. */
+  prescription?: PrescriptionItem[];
+  /** Owner's Telegram chat id — controls whether the Send buttons
+   *  are enabled. Resolved by the parent (patient.ownerTelegram or
+   *  localStorage). */
+  chatId?: string;
   onSubmit: (payload: MedSchedulePayload) => void;
 }) {
   const [presetId, setPresetId] =
@@ -837,6 +1245,106 @@ function MedicationScheduleCard({
   const [mealRelation, setMealRelation] =
     useState<MedSchedulePayload["meal_relation"]>("none");
   const [notes, setNotes] = useState("");
+
+  const [followupDays, setFollowupDays] = useState<number>(3);
+  const [followupFirst, setFollowupFirst] = useState<string>(todayIso());
+  const [followupMessage, setFollowupMessage] = useState<string>(
+    `Hi ${patient.owner}, just checking in on ${patient.name}'s recovery — any change in straining, appetite, or energy levels?`
+  );
+
+  useEffect(() => {
+    setFollowupFirst(startDate);
+  }, [startDate]);
+
+  // Pre-populate the schedule from the first prescription item the
+  // moment one arrives. Parses BID/SID/q8h/etc. + duration to set the
+  // preset, times, intervalHours, durDays, and notes (drug name +
+  // dose). Runs only once per prescription identity so doctor edits
+  // are preserved during a session.
+  const firstRx = prescription?.[0];
+  const rxKey = firstRx ? `${firstRx.drug}|${firstRx.dose}|${firstRx.dur}` : "";
+  useEffect(() => {
+    if (!firstRx) return;
+    const { preset, times: t, intervalHours: ih } = parseRxFrequency(firstRx.dose);
+    setPresetId(preset);
+    setTimes(t);
+    setIntervalHours(ih);
+    const days = parseRxDuration(firstRx.dur);
+    setDurKind("days");
+    setDurDays(days);
+    setNotes(`${firstRx.drug} · ${firstRx.dose} · ${firstRx.dur}`);
+  }, [rxKey, firstRx]);
+
+  // Send-button states for both columns. Each flips between idle /
+  // sending / sent / error so the doctor sees feedback in <2s.
+  type SendState =
+    | { kind: "idle" }
+    | { kind: "sending" }
+    | { kind: "sent"; messageId: number }
+    | { kind: "error"; message: string };
+  const [followupSendState, setFollowupSendState] = useState<SendState>({ kind: "idle" });
+  const [reminderSendState, setReminderSendState] = useState<SendState>({ kind: "idle" });
+
+  const sendTelegram = async (
+    body: string,
+    setState: (s: SendState) => void,
+  ) => {
+    if (!chatId?.trim()) {
+      setState({ kind: "error", message: "Link Telegram chat ID first" });
+      return;
+    }
+    setState({ kind: "sending" });
+    try {
+      const res = await fetch("/api/consult/telegram-send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chatId: chatId.trim(),
+          body,
+          patientId: patient.id,
+          patientName: patient.name,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: true;
+        messageId?: number;
+        error?: string;
+      };
+      if (!res.ok || !json.ok || typeof json.messageId !== "number") {
+        throw new Error(json.error ?? `send failed (${res.status})`);
+      }
+      setState({ kind: "sent", messageId: json.messageId });
+    } catch (err) {
+      setState({
+        kind: "error",
+        message: err instanceof Error ? err.message : "send failed",
+      });
+    }
+  };
+
+  const sendFollowupNow = () =>
+    sendTelegram(followupMessage.trim(), setFollowupSendState);
+
+  const sendReminderNow = () => {
+    const drug = firstRx ? `${firstRx.drug} (${firstRx.dose})` : "the prescribed medication";
+    const tList =
+      sortedTimes.length === 0
+        ? "the scheduled times"
+        : sortedTimes.length === 1
+          ? sortedTimes[0]
+          : sortedTimes.slice(0, -1).join(", ") + " and " + sortedTimes.at(-1);
+    const meal =
+      mealRelation === "before_meal"
+        ? " (give before food)"
+        : mealRelation === "after_meal"
+          ? " (give with or after food)"
+          : "";
+    const body =
+      `Reminder for ${patient.name}: time for ${drug}${meal}. ` +
+      `Daily schedule: ${tList}, through ${effectiveEnd}. ` +
+      `Reply if you have any concerns. — ${CLINIC.name}`;
+    sendTelegram(body, setReminderSendState);
+  };
 
   const applyPreset = (id: (typeof MED_PRESETS)[number]["id"]) => {
     setPresetId(id);
@@ -920,7 +1428,13 @@ function MedicationScheduleCard({
       end_date:      effectiveEnd,
       meal_relation: mealRelation,
       notes:         notes.trim(),
+      agentFollowup: {
+        daysBetween:  Math.max(1, followupDays || 1),
+        firstCheckIn: followupFirst,
+        message:      followupMessage.trim(),
+      },
     };
+    console.log("[MedicationScheduleCard] agentFollowup", payload.agentFollowup);
     onSubmit(payload);
   };
 
@@ -950,7 +1464,113 @@ function MedicationScheduleCard({
         </>
       }
     >
-      <div style={{ display: "grid", gap: 20 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 2fr",
+          gap: 24,
+          alignItems: "stretch",
+        }}
+      >
+        {/* LEFT — Agent follow-up */}
+        <div
+          style={{
+            display: "grid",
+            gap: 16,
+            alignContent: "start",
+            paddingRight: 24,
+            borderRight: `1px solid ${C.borderSoft}`,
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                color: C.text,
+                marginBottom: 4,
+              }}
+            >
+              AI follow-up
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+              When should the bot check on the owner?
+            </div>
+          </div>
+
+          <div>
+            <div style={lbl}>Days between check-ins</div>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={followupDays}
+              onChange={(e) => setFollowupDays(Number(e.target.value) || 0)}
+              style={{ ...inp, width: 110, fontFamily: FONT_MONO }}
+            />
+          </div>
+
+          <div>
+            <div style={lbl}>First check-in</div>
+            <input
+              type="date"
+              value={followupFirst}
+              min={startDate}
+              onChange={(e) => setFollowupFirst(e.target.value)}
+              style={{ ...inp, width: "100%", fontFamily: FONT_MONO }}
+            />
+          </div>
+
+          <div>
+            <div style={lbl}>Personalized message draft</div>
+            <textarea
+              value={followupMessage}
+              onChange={(e) => setFollowupMessage(e.target.value)}
+              rows={5}
+              style={{
+                ...inp,
+                width: "100%",
+                resize: "vertical",
+                minHeight: 110,
+                fontFamily: "inherit",
+                lineHeight: 1.5,
+              }}
+            />
+            <div style={{ fontSize: 11, color: C.hint, marginTop: 5 }}>
+              Sent to {patient.owner} via the linked channel.
+            </div>
+          </div>
+
+          <SendNowRow
+            label="Send follow-up now"
+            disabled={!chatId?.trim() || !followupMessage.trim()}
+            state={followupSendState}
+            onSend={sendFollowupNow}
+            hint={!chatId?.trim() ? "Link Telegram chat ID at the top of the consult." : undefined}
+          />
+        </div>
+
+        {/* RIGHT — Medication reminder schedule */}
+        <div style={{ display: "grid", gap: 20, alignContent: "start" }}>
+          <div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                color: C.text,
+                marginBottom: 4,
+              }}
+            >
+              Medication reminder schedule
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.45 }}>
+              Cadence, dates, and meal relation for the dosing reminders.
+            </div>
+          </div>
 
         {/* A — Quick preset */}
         <div>
@@ -1124,20 +1744,30 @@ function MedicationScheduleCard({
           </div>
         </div>
 
-        {/* D — Validation errors */}
-        {errors.length > 0 && (
-          <div
-            style={{
-              borderRadius: 8, border: `1px solid ${C.amberBorder}`,
-              padding: "10px 12px", fontSize: 12.5, color: C.amber,
-              display: "grid", gap: 4,
-            }}
-          >
-            {errors.map((e, i) => <div key={i}>· {e}</div>)}
-          </div>
-        )}
+        <SendNowRow
+          label="Send reminder now"
+          disabled={!chatId?.trim() || times.length === 0}
+          state={reminderSendState}
+          onSend={sendReminderNow}
+          hint={!chatId?.trim() ? "Link Telegram chat ID at the top of the consult." : undefined}
+        />
 
-      </div>
+        </div>{/* /RIGHT column */}
+      </div>{/* /grid */}
+
+      {/* D — Validation errors */}
+      {errors.length > 0 && (
+        <div
+          style={{
+            marginTop: 16,
+            borderRadius: 8, border: `1px solid ${C.amberBorder}`,
+            padding: "10px 12px", fontSize: 12.5, color: C.amber,
+            display: "grid", gap: 4,
+          }}
+        >
+          {errors.map((e, i) => <div key={i}>· {e}</div>)}
+        </div>
+      )}
     </OutputCardShell>
   );
 }
@@ -1145,12 +1775,544 @@ function MedicationScheduleCard({
 // ─────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────
+/**
+ * Off-critical-path evidence check card. Auto-fires after the main
+ * pipeline completes and the orchestrator output (`output`) is
+ * available. Shows a "checking" spinner, then resolves to:
+ *   - clear: green ✓ summary, optionally with citations
+ *   - warning: amber ⚠ banner with the cited concern
+ *   - unknown: muted "no recent literature found" line
+ *
+ * Cached repeats hit Supabase in ~50ms; first-of-its-kind queries
+ * take 8-15s. Either way the doctor's main output is already on
+ * screen so they're never blocked.
+ */
+function EvidenceCheckCard({
+  patient,
+  output,
+}: {
+  patient: Patient;
+  output: ConsultOutput;
+}) {
+  type State =
+    | { kind: "checking" }
+    | {
+        kind: "done";
+        status: "clear" | "warning" | "unknown";
+        summary: string;
+        citations: { title: string; url: string }[];
+        cached: boolean;
+        latencyMs: number;
+      }
+    | { kind: "error"; message: string };
+  const [state, setState] = useState<State>({ kind: "checking" });
+
+  // Re-check whenever the output's prescription set changes — e.g. a
+  // regenerate produces a different drug list. Cached responses make
+  // re-runs near-instant on the same drug+species combo.
+  const drugKey = output.prescription.map((p) => p.drug).join("|");
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "checking" });
+    const drugs = output.prescription.map((p) => p.drug).filter(Boolean);
+    const fullAssessment = output.soap.A ?? "";
+    const diagnosis = fullAssessment.split(/\.\s/)[0] ?? "";
+    api
+      .evidenceCheck({
+        patientName: patient.name,
+        patientSpecies: patient.species,
+        diagnosis,
+        drugs,
+        breed: patient.breed || undefined,
+        age: patient.age || undefined,
+        chiefComplaint: patient.reason || undefined,
+        soapAssessment: fullAssessment || undefined,
+        relevantHistory: patient.brief?.chronic || undefined,
+      })
+      .then((r) => {
+        if (cancelled) return;
+        setState({
+          kind: "done",
+          status: r.status,
+          summary: r.summary,
+          citations: r.citations,
+          cached: !!r.cached,
+          latencyMs: r.latencyMs,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : "check failed",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patient.id, patient.name, patient.species, output.soap.A, drugKey]);
+
+  const palette =
+    state.kind === "done" && state.status === "warning"
+      ? { bg: C.amberLight, border: C.amberBorder, label: C.amber, dot: C.amber }
+      : state.kind === "done" && state.status === "clear"
+        ? { bg: C.greenLight, border: C.greenBorder, label: C.greenDark, dot: C.green }
+        : { bg: C.bgAlt, border: C.borderSoft, label: C.muted, dot: C.muted };
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 12,
+        padding: "14px 18px",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        animation: "fadeUp 320ms ease both",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          fontSize: 18,
+          lineHeight: 1.2,
+          marginTop: 1,
+        }}
+      >
+        {state.kind === "checking"
+          ? "🔍"
+          : state.kind === "error"
+            ? "⚠️"
+            : state.status === "warning"
+              ? "⚠️"
+              : state.status === "clear"
+                ? "✓"
+                : "ℹ️"}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: 1.4,
+            textTransform: "uppercase",
+            color: palette.label,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          Evidence check
+          {state.kind === "checking" && (
+            <span
+              style={{
+                fontSize: 10.5,
+                color: C.hint,
+                fontWeight: 500,
+                letterSpacing: 0,
+                textTransform: "none",
+              }}
+            >
+              · cross-referencing 2024–2025 literature…
+            </span>
+          )}
+          {state.kind === "done" && (
+            <span
+              style={{
+                fontSize: 10.5,
+                color: C.hint,
+                fontWeight: 500,
+                letterSpacing: 0,
+                textTransform: "none",
+                fontFamily: FONT_MONO,
+              }}
+            >
+              · {state.cached ? "cached" : `${(state.latencyMs / 1000).toFixed(1)}s`}
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: C.text,
+            marginTop: 6,
+            lineHeight: 1.5,
+          }}
+        >
+          {state.kind === "checking"
+            ? "Querying Tavily for recent recalls and new contraindications…"
+            : state.kind === "error"
+              ? `Check unavailable: ${state.message}`
+              : state.summary}
+        </div>
+        {state.kind === "done" && state.citations.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              fontSize: 11,
+            }}
+          >
+            {state.citations.slice(0, 3).map((c, i) => (
+              <a
+                key={`${c.url}-${i}`}
+                href={c.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  color: palette.label,
+                  textDecoration: "underline",
+                  textUnderlineOffset: 2,
+                  maxWidth: 320,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={c.title}
+              >
+                {c.title}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FieldHeader({
+  label,
+  hint,
+  count,
+}: {
+  label: string;
+  hint: string;
+  count: number;
+}) {
+  return (
+    <div
+      style={{
+        padding: "10px 22px 8px",
+        background: C.bgAlt,
+        borderTop: `1px solid ${C.borderSoft}`,
+        display: "flex",
+        alignItems: "baseline",
+        gap: 12,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10.5,
+          fontWeight: 700,
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          color: C.muted,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ fontSize: 11.5, color: C.hint }}>· {hint}</div>
+      <div style={{ flex: 1 }} />
+      <div style={{ fontSize: 11, color: C.hint, fontFamily: FONT_MONO }}>
+        {count} chars
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Pre-consult brief card — auto-fires once a patient is loaded. Sends
+ * the patient's structured brief + chief complaint to Haiku and renders
+ * the returned 1-minute-read paragraph for the doctor. Off the
+ * critical path (the consult notes input is still right below).
+ */
+function PreconsultBriefCard({ patient }: { patient: Patient }) {
+  type State =
+    | { kind: "loading" }
+    | { kind: "ready"; summary: string; latencyMs?: number; source: string }
+    | { kind: "error"; message: string };
+  const [state, setState] = useState<State>({ kind: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "loading" });
+    api
+      .preconsultSummary({
+        patientName: patient.name,
+        patientSpecies: patient.species,
+        patientBreed: patient.breed,
+        patientAge: patient.age,
+        patientSex: patient.sex,
+        reason: patient.reason || undefined,
+        brief: {
+          lastVisit: patient.brief.lastVisit,
+          chronic: patient.brief.chronic,
+          compliance: patient.brief.compliance,
+          pending: patient.brief.pending,
+          probe: patient.brief.probe,
+        },
+      })
+      .then((r) => {
+        if (cancelled) return;
+        setState({
+          kind: "ready",
+          summary: r.summary,
+          latencyMs: r.latencyMs,
+          source: r.source,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : "summary failed",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    patient.id,
+    patient.name,
+    patient.reason,
+    patient.brief.lastVisit,
+    patient.brief.chronic,
+    patient.brief.compliance,
+    patient.brief.pending,
+    patient.brief.probe,
+  ]);
+
+  return (
+    <Card
+      style={{
+        padding: 0,
+        marginBottom: 24,
+        overflow: "hidden",
+        boxShadow: SHADOW_CARD,
+        animation: "fadeUp 320ms ease both",
+      }}
+    >
+      <div
+        style={{
+          padding: "12px 22px",
+          borderBottom: `1px solid ${C.borderSoft}`,
+          background: C.bgAlt,
+          display: "flex",
+          alignItems: "baseline",
+          gap: 10,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: 1.4,
+            textTransform: "uppercase",
+            color: C.brand,
+          }}
+        >
+          1-minute read
+        </span>
+        <span style={{ color: C.border }}>·</span>
+        <span style={{ fontSize: 11.5, color: C.muted }}>
+          Generated from {patient.name}&apos;s pre-consult brief
+        </span>
+        <div style={{ flex: 1 }} />
+        {state.kind === "loading" && (
+          <span style={{ fontSize: 11, color: C.hint, fontStyle: "italic" }}>
+            generating…
+          </span>
+        )}
+        {state.kind === "ready" && state.latencyMs && (
+          <span
+            style={{
+              fontSize: 11,
+              color: C.hint,
+              fontFamily: FONT_MONO,
+            }}
+          >
+            {(state.latencyMs / 1000).toFixed(1)}s
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          padding: "18px 22px",
+          fontFamily: FONT_SERIF,
+          fontSize: 15,
+          lineHeight: 1.65,
+          color: C.text,
+        }}
+      >
+        {state.kind === "loading" && (
+          <div style={{ display: "grid", gap: 8 }}>
+            <Skeleton height={14} width="98%" />
+            <Skeleton height={14} width="92%" />
+            <Skeleton height={14} width="95%" />
+            <Skeleton height={14} width="60%" />
+          </div>
+        )}
+        {state.kind === "ready" && state.summary}
+        {state.kind === "error" && (
+          <span style={{ color: C.muted, fontStyle: "italic" }}>
+            Brief unavailable — proceed with the structured panel above.
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function TelegramLinkRow({ patient }: { patient: Patient }) {
+  const { flashToast, refresh } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(patient.ownerTelegram ?? "");
+  const [saving, setSaving] = useState(false);
+  const linked = !!patient.ownerTelegram;
+
+  // When the underlying patient changes (e.g. dashboard refresh), reset
+  // the local draft so the field reflects the new server-side value.
+  useEffect(() => {
+    setDraft(patient.ownerTelegram ?? "");
+    setEditing(false);
+  }, [patient.id, patient.ownerTelegram]);
+
+  async function save() {
+    const trimmed = draft.trim();
+    setSaving(true);
+    try {
+      await api.setPatientTelegram(patient.id, trimmed || null);
+      flashToast(
+        trimmed
+          ? `Telegram linked · ${patient.name}`
+          : `Telegram unlinked · ${patient.name}`,
+      );
+      setEditing(false);
+      void refresh();
+    } catch (err) {
+      flashToast(
+        err instanceof Error ? err.message : "Failed to update Telegram link",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        borderTop: `1px solid ${C.border}`,
+        padding: "10px 20px",
+        background: linked ? "#FFFFFF" : C.bgAlt,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        fontSize: 12.5,
+        color: C.muted,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          color: linked ? C.brand : C.hint,
+        }}
+      >
+        Owner Telegram
+      </span>
+      <span style={{ color: C.border }}>·</span>
+      {editing ? (
+        <>
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={saving}
+            autoFocus
+            placeholder="123456789 or @username"
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 12.5,
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: `1px solid ${C.border}`,
+              outline: "none",
+              minWidth: 220,
+              background: "#fff",
+            }}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={save}
+            style={saving ? { opacity: 0.5, pointerEvents: "none" } : undefined}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setDraft(patient.ownerTelegram ?? "");
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <>
+          <span
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 12.5,
+              color: linked ? C.text : C.hint,
+              fontWeight: 500,
+            }}
+          >
+            {linked ? patient.ownerTelegram : "Not linked yet"}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: C.brand,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: 0,
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+            }}
+          >
+            {linked ? "Edit" : "Link Telegram"}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConsultContent() {
   const params = useSearchParams();
   const router = useRouter();
   const pid = params.get("pid");
   const { flashToast, patients } = useStore();
-  const patient = patients.find((p) => p.id === pid) || patients[0];
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  // `patient` is resolved further below via fetch-on-demand to handle
+  // the realtime-arrival race; the old `patients.find(...) || patients[0]`
+  // line was a duplicate from a merge that silently fell back to the
+  // wrong patient. Don't reintroduce it.
   const [switchOpen, setSwitchOpen] = useState(false);
   const switchTriggerRef = useRef<HTMLButtonElement | null>(null);
   const switchMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1188,7 +2350,68 @@ function ConsultContent() {
     };
   }, [switchOpen]);
 
+  // Fetch-on-demand for patients arriving from a Realtime push: when the
+  // doctor clicks "Open consult" on a new-patient banner, the local
+  // `patients` array hasn't yet been refreshed by the async Realtime
+  // callback. Falling back to patients[0] silently loaded the wrong
+  // patient; instead, fetch the single patient by id while we wait.
+  const localPatient = pid
+    ? patients.find((p) => p.id === pid)
+    : patients[0];
+  const [fetchedPatient, setFetchedPatient] = useState<Patient | null>(null);
+  const [fetchState, setFetchState] = useState<"idle" | "loading" | "not-found">(
+    "idle",
+  );
+
+  useEffect(() => {
+    if (!pid) {
+      setFetchedPatient(null);
+      setFetchState("idle");
+      return;
+    }
+    if (patients.find((p) => p.id === pid)) {
+      setFetchedPatient(null);
+      setFetchState("idle");
+      return;
+    }
+    if (fetchedPatient?.id === pid) return;
+    let cancelled = false;
+    setFetchState("loading");
+    setFetchedPatient(null);
+    api
+      .getPatient(pid)
+      .then((res) => {
+        if (cancelled) return;
+        setFetchedPatient(res.patient);
+        setFetchState("idle");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFetchedPatient(null);
+        setFetchState("not-found");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pid, patients, fetchedPatient?.id]);
+
+  const patient = localPatient ?? fetchedPatient;
+
+  // Two separate inputs that flow into the same orchestrator call:
+  //   - `conversation` is the auto-transcribed back-and-forth between vet
+  //     and owner during the visit. Mic recordings append here.
+  //   - `notes` is the doctor's structured clinical shorthand (SOAP-style
+  //     observations, plan). Typed only.
+  // Merged into one block in `combinedNotes` before sending to /api/consult.
+  const [conversation, setConversation] = useState("");
   const [notes, setNotes] = useState("");
+  const combinedNotes = [
+    conversation.trim() &&
+      `Conversation transcript:\n${conversation.trim()}`,
+    notes.trim() && `Doctor's notes:\n${notes.trim()}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n---\n\n");
   // Multi-agent stream replaces the legacy single-call /api/consult flow.
   // The pipeline visualization (ArchitectureDiagram / Timeline / TavilyFeed)
   // is opt-in via showPipeline — default off so routine consults stay calm,
@@ -1208,7 +2431,34 @@ function ConsultContent() {
   type Attachment = { file: File; previewUrl: string };
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [telegramChatId, setTelegramChatId] = useState(patient?.owner_telegram || "");
+  // chatId resolution chain — priority: patient.ownerTelegram (DB) >
+  // localStorage > NEXT_PUBLIC_DEV_TELEGRAM_CHAT_ID > "". Re-resolves
+  // whenever the patient changes (e.g. switching patients in the
+  // dashboard) so the SendPanel always shows the right value.
+  const [telegramChatId, setTelegramChatId] = useState("");
+  useEffect(() => {
+    const fromPatient = patient?.ownerTelegram?.trim() ?? "";
+    const fromStorage =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("consilium.telegramChatId") ?? ""
+        : "";
+    const fromEnv = process.env.NEXT_PUBLIC_DEV_TELEGRAM_CHAT_ID ?? "";
+    setTelegramChatId(fromPatient || fromStorage || fromEnv);
+  }, [patient?.id, patient?.ownerTelegram]);
+  // Persist the chat ID to localStorage whenever the doctor edits it,
+  // so the next consult on this browser auto-fills.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!telegramChatId.trim()) return;
+    try {
+      window.localStorage.setItem(
+        "consilium.telegramChatId",
+        telegramChatId.trim(),
+      );
+    } catch {
+      // Quota / private mode — non-fatal
+    }
+  }, [telegramChatId]);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1217,22 +2467,37 @@ function ConsultContent() {
   // pipeline produces `summary.doctorSummary.soap`, `summary.prescription`,
   // `summary.billing`, `summary.todos` — the existing card components only
   // ever wanted these four fields.
-  const [overrides, setOverrides] = useState<Partial<ConsultOutput>>({});
-  const output: ConsultOutput | null = useMemo(() => {
-    if (!stream.result) return null;
+  // Source the output from the final result if available, otherwise from
+  // the in-flight partialSummary (populated by orchestrator_delta SSE
+  // events as Sonnet streams its tool input). This lets the SOAP / Rx /
+  // Billing / Todos cards render token-by-token during the orchestrator
+  // pass instead of waiting for the full ~18s completion.
+  const baseOutput: ConsultOutput | null = useMemo(() => {
+    const summary = stream.result?.summary ?? stream.partialSummary ?? null;
+    if (!summary) return null;
     return {
-      soap: overrides.soap || stream.result.summary.doctorSummary.soap,
-      prescription: overrides.prescription || stream.result.summary.prescription,
-      billing: overrides.billing || stream.result.summary.billing,
-      todos: overrides.todos || stream.result.summary.todos,
+      soap: summary.doctorSummary?.soap ?? { S: "", O: "", A: "", P: "" },
+      prescription: summary.prescription ?? [],
+      billing: summary.billing ?? [],
+      todos: summary.todos ?? [],
     };
-  }, [stream.result, overrides]);
-
+  }, [stream.result, stream.partialSummary]);
+  // Doctor edits to the output cards. Resets whenever the underlying
+  // pipeline output changes (new run / streaming delta) so we never
+  // mask fresh upstream data with stale local edits.
+  const [editOverrides, setEditOverrides] = useState<Partial<ConsultOutput>>({});
+  useEffect(() => {
+    setEditOverrides({});
+  }, [baseOutput]);
+  const output: ConsultOutput | null = useMemo(() => {
+    if (!baseOutput) return null;
+    return { ...baseOutput, ...editOverrides };
+  }, [baseOutput, editOverrides]);
+  // True only while the orchestrator is still streaming — used by cards
+  // to render a subtle "streaming…" pill so the doctor knows the
+  // displayed values aren't final yet.
+  const isStreaming = stream.running && !stream.result;
   const generating = stream.running;
-  const billTotal = useMemo(
-    () => (output ? output.billing.reduce((a, b) => a + b.price, 0) : 0),
-    [output]
-  );
   const billFlagged = useMemo(
     () =>
       output
@@ -1242,7 +2507,7 @@ function ConsultContent() {
   );
 
   const generate = async () => {
-    if (!notes.trim() || !patient) return;
+    if (!combinedNotes || !patient) return;
     try {
       // Upload any attached photos first; URLs flow into the multi-agent
       // text-agent (which validates them against the SSRF allowlist).
@@ -1254,7 +2519,9 @@ function ConsultContent() {
             attachments.map((a) => a.file),
             "consult-photos",
           );
-          imageUrls = uploads.map((u: { url: string }) => u.url).filter((u: string | undefined): u is string => Boolean(u));
+          imageUrls = uploads
+            .map((u) => u.url)
+            .filter((u): u is string => Boolean(u));
           if (imageUrls && imageUrls.length > 0) {
             flashToast(`Uploaded ${imageUrls.length} photo${imageUrls.length === 1 ? "" : "s"}`);
           }
@@ -1267,19 +2534,28 @@ function ConsultContent() {
       // start() — reading stream.result here is unsafe (closure-captured
       // pre-reset value). The hook also writes the same result to state
       // for reactive rendering.
+      // Send the doctor's typed shorthand as `notes` (what the
+      // text/billing/prescription agents read) and the Deepgram
+      // transcript as `transcript` (what the voice agent reads). Bundling
+      // them broke the voice agent (it saw "no transcript provided")
+      // and confused the prescription agent.
       const terminal = await stream.start({
         patientId: patient.id,
-        notes,
+        notes: notes.trim() || conversation.trim(),
+        transcript: conversation.trim() || undefined,
         imageUrls,
       });
       if (terminal) {
-        const flagged = terminal.summary.billing
+        const billing = terminal.summary.billing ?? [];
+        const prescription = terminal.summary.prescription ?? [];
+        const todos = terminal.summary.todos ?? [];
+        const flagged = billing
           .filter((b) => b.flagged)
           .reduce((a, b) => a + b.price, 0);
         flashToast(
           flagged > 0
-            ? `Extracted · ${terminal.summary.billing.length} billing items · RM ${flagged} recoverable`
-            : `Extracted · SOAP + ${terminal.summary.prescription.length} rx + ${terminal.summary.todos.length} todos`,
+            ? `Extracted · ${billing.length} billing items · RM ${flagged} recoverable`
+            : `Extracted · SOAP + ${prescription.length} rx + ${todos.length} todos`,
         );
       }
     } catch (err) {
@@ -1319,25 +2595,60 @@ function ConsultContent() {
       flashToast("Mic not supported in this browser");
       return;
     }
+    // Probe MediaRecorder for a MIME the browser will actually honor.
+    // Hardcoding "audio/webm" silently produced corrupt streams in some
+    // builds (browser fell back to a different codec but the Blob kept
+    // the webm label, Deepgram then rejected with "corrupt or unsupported
+    // data"). Pick the first supported in priority order — Deepgram
+    // accepts webm/opus, ogg/opus, and mp4 directly.
+    const candidateMimes = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+    ];
+    const supportedMime =
+      typeof MediaRecorder !== "undefined"
+        ? candidateMimes.find((m) => MediaRecorder.isTypeSupported(m))
+        : undefined;
+    if (!supportedMime) {
+      flashToast("Browser cannot record any Deepgram-compatible audio format");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStream.current = stream;
       audioChunks.current = [];
-      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mr = new MediaRecorder(stream, { mimeType: supportedMime });
       mediaRecorder.current = mr;
       mr.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) audioChunks.current.push(e.data);
       };
       mr.onstop = async () => {
         stopMicTracks();
-        const blob = new Blob(audioChunks.current, { type: "audio/webm" });
+        // Use the recorder's actual MIME (mr.mimeType) — browsers may
+        // append the negotiated codec, and we want the Blob's type to
+        // match the bytes exactly so the transcribe route forwards the
+        // right Content-Type to Deepgram.
+        const recordedMime = mr.mimeType || supportedMime;
+        const blob = new Blob(audioChunks.current, { type: recordedMime });
         audioChunks.current = [];
         if (blob.size === 0) return;
+        // Anything under ~1KB is almost certainly the EBML header alone
+        // (no audio frames) — happens when the user stops within a few
+        // hundred ms of starting. Deepgram rejects header-only payloads
+        // with "corrupt or unsupported data". Surface a clearer error.
+        if (blob.size < 1024) {
+          flashToast("Recording too short — hold the mic for at least 1 second");
+          return;
+        }
         setTranscribing(true);
         try {
           const { transcript } = await api.transcribe(blob);
           if (transcript) {
-            setNotes((prev) => (prev ? `${prev.trim()} ${transcript}` : transcript));
+            setConversation((prev) =>
+              prev ? `${prev.trim()} ${transcript}` : transcript,
+            );
             flashToast("Transcribed · Deepgram nova-3");
           } else {
             flashToast("No speech detected");
@@ -1348,7 +2659,12 @@ function ConsultContent() {
           setTranscribing(false);
         }
       };
-      mr.start();
+      // 250ms timeslice — without this, MediaRecorder only emits
+      // ondataavailable on stop. If the user stops quickly, the encoder
+      // hasn't flushed any audio frames yet and we get a header-only
+      // blob that Deepgram rejects. With timeslice, frames accumulate
+      // every 250ms so even a fast stop produces decodable audio.
+      mr.start(250);
       setRecording(true);
       setRecordSec(0);
       recordTimer.current = setInterval(() => {
@@ -1398,10 +2714,110 @@ function ConsultContent() {
   const fmtTime = (n: number) =>
     `${Math.floor(n / 60)}:${(n % 60).toString().padStart(2, "0")}`;
 
+  if (fetchState === "not-found") {
+    return (
+      <div style={{ padding: "0 32px 120px", maxWidth: 1480, margin: "0 auto" }}>
+        <PageHeader
+          eyebrow="Consultation"
+          title="Patient not found."
+          sub="The patient id in the URL does not match any record in this clinic."
+          right={
+            <Link href="/dashboard">
+              <Button variant="ghost" size="sm" icon={Icon.back(14)}>
+                Dashboard
+              </Button>
+            </Link>
+          }
+        />
+        <Card
+          style={{
+            padding: "44px 28px",
+            textAlign: "center",
+            boxShadow: SHADOW_CARD,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: FONT_SERIF,
+              fontSize: 17,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 6,
+            }}
+          >
+            We could not load this patient
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: C.muted,
+              maxWidth: 420,
+              margin: "0 auto 16px",
+              lineHeight: 1.55,
+            }}
+          >
+            The patient id <code style={{ fontFamily: FONT_MONO }}>{pid}</code>{" "}
+            does not exist or was removed. Head back to the dashboard to pick a
+            patient from the schedule.
+          </div>
+          <Link href="/dashboard">
+            <Button size="md" icon={Icon.back(14)}>
+              Back to dashboard
+            </Button>
+          </Link>
+        </Card>
+      </div>
+    );
+  }
+
   if (!patient) {
     return (
-      <div style={{ padding: 48, color: C.muted, fontSize: 14 }}>
-        Loading patient…
+      <div style={{ padding: "0 32px 120px", maxWidth: 1480, margin: "0 auto" }}>
+        <PageHeader
+          eyebrow="Consultation"
+          title="Loading patient…"
+          sub="Fetching record from the clinic database."
+          right={
+            <Link href="/dashboard">
+              <Button variant="ghost" size="sm" icon={Icon.back(14)}>
+                Dashboard
+              </Button>
+            </Link>
+          }
+        />
+        <Card
+          style={{
+            padding: 0,
+            marginBottom: 28,
+            overflow: "hidden",
+            boxShadow: SHADOW_CARD,
+          }}
+        >
+          <div
+            style={{
+              padding: "16px 20px",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <Skeleton height={44} width={44} radius="50%" />
+            <div style={{ flex: 1, display: "grid", gap: 8 }}>
+              <Skeleton height={20} width="32%" />
+              <Skeleton height={12} width="48%" />
+            </div>
+            <Skeleton height={22} width={70} radius={999} />
+          </div>
+          <div
+            style={{
+              borderTop: `1px solid ${C.border}`,
+              padding: "10px 20px",
+              background: C.bgAlt,
+            }}
+          >
+            <Skeleton height={12} width="55%" />
+          </div>
+        </Card>
       </div>
     );
   }
@@ -1606,6 +3022,44 @@ function ConsultContent() {
               document.body,
             )}
         </div>
+        {/* Chief complaint — what the receptionist typed in today.
+            Only shown when patient.reason is populated (receptionist flow). */}
+        {patient.reason && (
+          <div
+            style={{
+              borderTop: `1px solid ${C.border}`,
+              padding: "12px 20px",
+              background: "#fff",
+              display: "flex",
+              alignItems: "baseline",
+              gap: 12,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                color: C.amber,
+                flexShrink: 0,
+              }}
+            >
+              Chief complaint
+            </span>
+            <span style={{ color: C.border }}>·</span>
+            <span
+              style={{
+                fontSize: 14,
+                color: C.text,
+                fontWeight: 500,
+                lineHeight: 1.5,
+              }}
+            >
+              {patient.reason}
+            </span>
+          </div>
+        )}
         {/* Probe reminder row — quiet muted bar */}
         <div
           style={{
@@ -1635,7 +3089,10 @@ function ConsultContent() {
             {patient.brief.probe}
           </span>
         </div>
+        <TelegramLinkRow patient={patient} />
       </Card>
+
+      <PreconsultBriefCard patient={patient} />
 
       {/* Pipeline visibility toggle + (when on) live agent execution view.
           Off by default — routine consults stay calm. On for transparency:
@@ -1793,7 +3250,7 @@ function ConsultContent() {
                   letterSpacing: 0.3,
                 }}
               >
-                {notes.length} chars
+                {conversation.length + notes.length} chars
               </div>
             </div>
 
@@ -1855,26 +3312,74 @@ function ConsultContent() {
               </div>
             )}
 
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Dictate or type consultation notes…"
+            {/* Two stacked fields: live conversation transcript on top
+                (mic feeds here), structured doctor notes below. Both flow
+                into the orchestrator as a merged block (combinedNotes). */}
+            <div
               style={{
-                width: "100%",
-                minHeight: 320,
-                resize: "vertical",
-                padding: "20px 22px",
-                border: "none",
-                outline: "none",
-                fontSize: 14.5,
-                lineHeight: 1.65,
-                color: C.text,
-                fontFamily: "inherit",
-                background: "#fff",
-                display: "block",
-                boxSizing: "border-box",
+                display: "grid",
+                gridTemplateRows: "auto auto",
               }}
-            />
+            >
+              <FieldHeader
+                label="Conversation transcript"
+                hint={
+                  recording
+                    ? `Listening · ${fmtTime(recordSec)}`
+                    : transcribing
+                    ? "Transcribing…"
+                    : "Tap mic above to record vet/owner conversation"
+                }
+                count={conversation.length}
+              />
+              <textarea
+                value={conversation}
+                onChange={(e) => setConversation(e.target.value)}
+                placeholder="Voice recording transcribes here automatically. You can also type or paste."
+                style={{
+                  width: "100%",
+                  minHeight: 160,
+                  resize: "vertical",
+                  padding: "16px 22px",
+                  border: "none",
+                  outline: "none",
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  color: C.text,
+                  fontFamily: "inherit",
+                  background: "#fff",
+                  display: "block",
+                  boxSizing: "border-box",
+                  fontStyle: conversation ? "normal" : "italic",
+                  borderBottom: `1px solid ${C.borderSoft}`,
+                }}
+              />
+              <FieldHeader
+                label="Doctor's notes"
+                hint="SOAP-style observations, exam findings, plan"
+                count={notes.length}
+              />
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Type your clinical findings — exam, vitals, assessment, plan…"
+                style={{
+                  width: "100%",
+                  minHeight: 200,
+                  resize: "vertical",
+                  padding: "16px 22px",
+                  border: "none",
+                  outline: "none",
+                  fontSize: 14.5,
+                  lineHeight: 1.65,
+                  color: C.text,
+                  fontFamily: "inherit",
+                  background: "#fff",
+                  display: "block",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
           </Card>
 
           {/* CTA row */}
@@ -1897,8 +3402,15 @@ function ConsultContent() {
               Consilium cross-references your notes against the clinic billing
               matrix and past visits.
             </div>
-            {notes && (
-              <Button variant="ghost" size="sm" onClick={() => setNotes("")}>
+            {(conversation || notes) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setConversation("");
+                  setNotes("");
+                }}
+              >
                 Clear
               </Button>
             )}
@@ -1907,7 +3419,7 @@ function ConsultContent() {
               onClick={generate}
               icon={Icon.spark(14)}
               style={
-                !notes.trim() || generating || uploading
+                !combinedNotes || generating || uploading
                    ? { opacity: 0.45, pointerEvents: "none" }
                   : undefined
               }
@@ -1924,29 +3436,46 @@ function ConsultContent() {
               <Button
                 variant="primary"
                 size="md"
-                style={{ background: "#10b93aff", borderColor: "#10b981" }}
+                style={{
+                  background:
+                    saveState === "saved" ? "#10b981" : "#10b93aff",
+                  borderColor: "#10b981",
+                  opacity: saveState === "saving" ? 0.6 : 1,
+                  pointerEvents: saveState === "idle" ? "auto" : "none",
+                }}
                 icon={Icon.check(14)}
                 onClick={async () => {
+                  setSaveState("saving");
                   if (!patient || !output) return;
                   try {
-                    const { visit } = await api.createVisit({
+                    await api.createVisit({
                       patientId: patient.id,
                       patientName: patient.name,
-                      telegramChatId,
-                      rawNotes: notes,
+                      rawNotes: combinedNotes,
                       soap: output.soap,
                       prescription: output.prescription,
-                      billing: output.billing.filter((b) => b.selected === true),
+                      billing: output.billing,
                       todos: output.todos,
+                      // Pass owner_telegram so the bot can correlate
+                      // future owner messages back to this visit.
+                      telegramChatId: patient.ownerTelegram ?? undefined,
                     });
-                    setSavedVisitId(visit.id);
-                    flashToast("Visit saved successfully!");
-                  } catch {
+                    setSaveState("saved");
+                    flashToast(
+                      `Consultation done · ${patient.name} saved · returning to dashboard`,
+                    );
+                    setTimeout(() => router.push("/dashboard"), 1400);
+                  } catch (err) {
+                    setSaveState("idle");
                     flashToast("Failed to save visit");
                   }
                 }}
               >
-                Finish & Save Visit
+                {saveState === "saved"
+                  ? "Done · redirecting…"
+                  : saveState === "saving"
+                    ? "Saving…"
+                    : "Finish & Save Visit"}
               </Button>
             )}
           </div>
@@ -1975,6 +3504,35 @@ function ConsultContent() {
             >
               Structured output
             </h3>
+            {isStreaming && (
+              <span
+                style={{
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  letterSpacing: 1.4,
+                  textTransform: "uppercase",
+                  color: C.brand,
+                  background: C.brandLight,
+                  border: `1px solid ${C.brandBorder}`,
+                  borderRadius: 999,
+                  padding: "2px 10px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: C.brand,
+                    animation: "agentPulse 1.2s ease-in-out infinite",
+                  }}
+                />
+                Streaming
+              </span>
+            )}
             <div style={{ flex: 1 }} />
             <StatusPill state={status} />
           </div>
@@ -2078,32 +3636,65 @@ function ConsultContent() {
             <div style={{ display: "grid", gap: 14 }}>
               <SoapCard
                 s={output.soap}
-                onEdit={(newSoap) => {
-                  setOverrides(o => ({ ...o, soap: newSoap }));
-                  flashToast("SOAP note edit saved");
-                }}
+                onSave={(soap) =>
+                  setEditOverrides((o) => ({ ...o, soap }))
+                }
               />
               <PrescriptionCard
                 rx={output.prescription}
-                onEdit={(newRx) => {
-                  setOverrides(o => ({ ...o, prescription: newRx }));
-                  flashToast("Prescription edit saved");
-                }}
+                onSave={(prescription) =>
+                  setEditOverrides((o) => ({ ...o, prescription }))
+                }
               />
+
+              {/* Recoverable callout — thin amber border, no wash */}
+              {billFlagged > 0 && (
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 14px",
+                    borderRadius: 999,
+                    border: `1px solid ${C.amberBorder}`,
+                    background: "transparent",
+                    color: C.amber,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    alignSelf: "flex-start",
+                    width: "fit-content",
+                    animation: "slideIn 380ms ease both",
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: C.amber,
+                      display: "inline-block",
+                    }}
+                  />
+                  <span style={{ fontFamily: FONT_MONO }}>RM {billFlagged}</span>{" "}
+                  recoverable — 2 items flagged in notes, not yet billed
+                </div>
+              )}
 
               <BillingCard
                 items={output.billing}
-                onEdit={(newBilling) => {
-                  setOverrides(o => ({ ...o, billing: newBilling }));
-                  flashToast("Checklist edit saved");
-                }}
+                onSave={(billing) =>
+                  setEditOverrides((o) => ({ ...o, billing }))
+                }
               />
               <TodoCard
                 todos={output.todos}
-                onEdit={(newTodos) => {
-                  setOverrides(o => ({ ...o, todos: newTodos }));
-                  flashToast("Todos edit saved");
-                }}
+                onSave={(todos) =>
+                  setEditOverrides((o) => ({ ...o, todos }))
+                }
+              />
+              <EvidenceCheckCard
+                patient={patient}
+                output={output}
               />
             </div>
           )}
@@ -2130,6 +3721,8 @@ function ConsultContent() {
         </div>
         <MedicationScheduleCard
           patient={patient}
+          prescription={output?.prescription}
+          chatId={telegramChatId}
           onSubmit={(payload) => {
             console.log("[medication-schedule] payload", payload);
             flashToast(
@@ -2161,9 +3754,9 @@ function ConsultContent() {
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>
             Review the draft, confirm the chat ID, deliver via Telegram. Saves the chat ID to the patient record on success.
           </div>
-          <SendPanel 
-            result={stream.result} 
-            patientId={patient.id} 
+          <SendPanel
+            result={stream.result}
+            patientId={patient.id}
             patientName={patient.name}
             chatId={telegramChatId}
             onChatIdChange={setTelegramChatId}
