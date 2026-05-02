@@ -36,6 +36,8 @@ interface StoreCtx {
   flashToast: (msg: string) => void;
   expandedPatient: string | null;
   setExpandedPatient: (id: string | null) => void;
+  approveClear: (f: FollowUp) => void;
+  changeFollowUpLevel: (f: FollowUp, level: FollowUpLevel) => void;
 }
 
 /** Minimum shape we read off a Realtime `followups` row payload. */
@@ -202,6 +204,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [escalation, approving, flashToast]);
 
+  const approveClear = useCallback((f: FollowUp) => {
+    setFollowups((fs) => fs.filter((x) => x.id !== f.id));
+    setResolvedCount((c) => c + 1);
+    flashToast(`${f.patient} categorized as clear`);
+    
+    void api.correction({
+      feature: "triage",
+      followupId: f.id,
+      glmOutput: "clear",
+      approved: true,
+    }).catch(() => {});
+  }, [flashToast]);
+
+  const changeFollowUpLevel = useCallback((f: FollowUp, level: FollowUpLevel) => {
+    setFollowups((fs) => fs.map((x) => x.id === f.id ? { ...x, level } : x));
+    flashToast(`${f.patient} moved to ${level}`);
+    
+    void api.correction({
+      feature: "triage",
+      followupId: f.id,
+      glmOutput: f.level,
+      doctorCorrection: level,
+      approved: false,
+    }).catch(() => {});
+  }, [flashToast]);
+
   return (
     <Ctx.Provider
       value={{
@@ -223,6 +251,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         flashToast,
         expandedPatient,
         setExpandedPatient,
+        approveClear,
+        changeFollowUpLevel,
       }}
     >
       {children}
