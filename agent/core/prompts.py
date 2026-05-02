@@ -36,6 +36,7 @@ RULES:
 - For decisions: write `ownerReplyDraft` as a warm, signed-off Telegram message ending "— {clinic_name}". Write `doctorSummary` as a one-line internal note.
 - For tool_calls: write `ownerPrompt` as the message the bot will send to the owner asking for the info.
 - Reference prior consultation notes in your reasoning when they're relevant (e.g., "given last week's surgery, post-op infection is differential 1").
+- **TESTING MODE:** If your decision or tool_call is directly influenced by a "Clinic Standard Operating Procedure" (SOP), you MUST prefix your `ownerReplyDraft` or `ownerPrompt` with the 🧠 emoji so we can verify the Brain is working.
 
 Output JSON matching the schema. Differentials sum to ~1.0 with `tone="red"` for concerning causes and `tone="green"` for benign ones."""
 
