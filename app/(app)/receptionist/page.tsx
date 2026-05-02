@@ -46,6 +46,7 @@ export default function ReceptionistPage() {
   const [sex, setSex] = useState<"Male" | "Female">("Male");
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
+  const [ownerTelegram, setOwnerTelegram] = useState("");
   const [reason, setReason] = useState("");
 
   function resetForm() {
@@ -56,11 +57,14 @@ export default function ReceptionistPage() {
     setSex("Male");
     setOwnerName("");
     setOwnerPhone("");
+    setOwnerTelegram("");
     setReason("");
     setStatus({ kind: "idle" });
   }
 
-  /** One-click demo data — Leo urinary obstruction case (mirrors Milo). */
+  /** One-click demo data — Leo urinary obstruction case. Auto-fills the
+   *  Telegram chat ID so the bot can recognise this owner immediately
+   *  after Send (skips the manual Link Telegram step on the consult). */
   function loadDemo() {
     setName("Leo");
     setSpecies("Dog");
@@ -69,6 +73,7 @@ export default function ReceptionistPage() {
     setSex("Male");
     setOwnerName("Lim Chee Wei");
     setOwnerPhone("+60 13 928 4717");
+    setOwnerTelegram("1697604097");
     setReason(
       "Owner reports straining to urinate, blood in urine x 2 days. Lethargic since this morning.",
     );
@@ -94,6 +99,18 @@ export default function ReceptionistPage() {
         ownerPhone,
         reasonForVisit: reason.trim() || undefined,
       });
+      // If a Telegram chat ID was provided, link it immediately so the
+      // bot recognises this owner the moment they message — and so the
+      // consult page's chat ID input prefills without an extra step.
+      if (ownerTelegram.trim()) {
+        try {
+          await api.setPatientTelegram(res.patient.id, ownerTelegram.trim());
+        } catch (err) {
+          console.warn("[receptionist] telegram link failed", err);
+          // Non-fatal — the patient is already created. Doctor can link
+          // manually via the consult page.
+        }
+      }
       // The Realtime subscription on the doctor side will pick this up
       // and flash the clickable arrival banner. We also locally refresh
       // the patient list so the receptionist sees the registered count
@@ -278,6 +295,27 @@ export default function ReceptionistPage() {
                     placeholder="+60 13 928 4717"
                     style={{ ...inputStyle, fontFamily: FONT_MONO }}
                   />
+                </Field>
+
+                <Field label="Owner Telegram (optional)">
+                  <input
+                    type="text"
+                    value={ownerTelegram}
+                    onChange={(e) => setOwnerTelegram(e.target.value)}
+                    disabled={sending}
+                    placeholder="123456789 or @username"
+                    style={{ ...inputStyle, fontFamily: FONT_MONO }}
+                  />
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.hint,
+                      marginTop: 5,
+                    }}
+                  >
+                    Linked immediately so the bot recognises this owner from
+                    their first message.
+                  </div>
                 </Field>
 
                 <Field label="What to probe today">
