@@ -3,9 +3,8 @@
  *
  * Run:  npx tsx scripts/test-glm.ts
  *
- * Exercises each feature and prints the canned output. No network — safe
- * to run in CI. When Phase 5-real lands, this same script will hit Z.AI
- * without any changes (requires ZAI_API_KEY in env).
+ * Exercises each feature and prints the canned output. No network in mock
+ * mode. With ANTHROPIC_API_KEY set in .env, it hits Claude directly.
  */
 import { loadEnvConfig } from "@next/env";
 loadEnvConfig(process.cwd());
