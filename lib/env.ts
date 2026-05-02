@@ -18,12 +18,14 @@ export const ENV = {
 
   // Single-clinic deployment config. Client components read the
   // NEXT_PUBLIC_* mirrors (this same object — Next inlines them at build).
-  // Defaults preserve the demo PawsClinic identity so a fresh clone still
+  // Defaults preserve the demo Peng Aun identity so a fresh clone still
   // builds and demos out of the box.
   clinic: {
     id: read("CLINIC_ID") || read("NEXT_PUBLIC_CLINIC_ID") || "pawsclinic_kl",
     name:
-      read("NEXT_PUBLIC_CLINIC_NAME") || read("CLINIC_NAME") || "PawsClinic KL",
+      read("NEXT_PUBLIC_CLINIC_NAME") ||
+      read("CLINIC_NAME") ||
+      "Peng Aun Sg Dua Penang",
     doctor:
       read("NEXT_PUBLIC_CLINIC_DOCTOR") ||
       read("CLINIC_DOCTOR") ||

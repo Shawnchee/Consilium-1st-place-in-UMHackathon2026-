@@ -12,7 +12,7 @@
 
 export const CLINIC = {
   id: process.env.NEXT_PUBLIC_CLINIC_ID || "pawsclinic_kl",
-  name: process.env.NEXT_PUBLIC_CLINIC_NAME || "PawsClinic KL",
+  name: process.env.NEXT_PUBLIC_CLINIC_NAME || "Peng Aun Sg Dua Penang",
   doctor: process.env.NEXT_PUBLIC_CLINIC_DOCTOR || "Dr. Amirah",
   phone: process.env.NEXT_PUBLIC_CLINIC_PHONE || "+60 12 345 6789",
 } as const;

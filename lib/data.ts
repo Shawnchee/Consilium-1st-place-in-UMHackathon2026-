@@ -132,7 +132,7 @@ export const INITIAL_FOLLOWUPS: FollowUp[] = [
     recommendation:
       "Bring Milo in immediately — possible partial urethral obstruction; consider moving cystotomy forward",
     draft:
-      "Hi Aisyah, please bring Milo in now — straining without producing urine can mean one of the stones is partially blocking his urethra, and we don't want to wait. We're ready for him at the clinic. — PawsClinic KL",
+      "Hi Aisyah, please bring Milo in now — straining without producing urine can mean one of the stones is partially blocking his urethra, and we don't want to wait. We're ready for him at the clinic. — Peng Aun Sg Dua Penang",
     tsLabel: "8 min ago",
   },
   {
@@ -155,7 +155,7 @@ export const INITIAL_FOLLOWUPS: FollowUp[] = [
     recommendation:
       "Same-day recheck — likely needs socket re-examination under sedation",
     draft:
-      "Hi Sarah, that level of bleeding and swelling on Day 1 isn't something we want to wait on. Please bring Coco in today — we can see him at 3:15pm. Do not give any food or water in the 2 hours before coming. — PawsClinic KL",
+      "Hi Sarah, that level of bleeding and swelling on Day 1 isn't something we want to wait on. Please bring Coco in today — we can see him at 3:15pm. Do not give any food or water in the 2 hours before coming. — Peng Aun Sg Dua Penang",
     tsLabel: "38 min ago",
   },
   {
