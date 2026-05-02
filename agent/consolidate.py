@@ -37,10 +37,9 @@ async def run_consolidation():
         start_time = last_update_str if last_update_str else yesterday
         log.info("Incremental window start: %s", start_time)
 
-        # 2. Fetch new corrections since last update
         corrections = (
             supabase.table("corrections")
-            .select("feature, glm_output, doctor_correction, rejection_reason, created_at, approved")
+            .select("feature, glm_output, doctor_correction, rejection_reason, created_at, approved, glm_triage, doctor_triage")
             .eq("feature", "triage")
             .eq("approved", True)
             .gt("created_at", start_time)
@@ -74,7 +73,8 @@ async def run_consolidation():
                 "- 'verified': true, 'pinned': false rules expire 30 days after 'last_reinforced_at'.\n"
                 "- 'verified': false rules are AI suggestions. They are ACTIVE but need doctor review.\n"
                 "- IMPORTANT: All NEW rules synthesized from 'TODAY'S CORRECTIONS' MUST start with 'verified': false and 'pinned': false.\n"
-                "- If today's correction reinforces an existing rule, update its 'last_reinforced_at' to today but KEEP its existing 'verified' and 'pinned' status.\n\n"
+                "- If today's correction reinforces an existing rule, update its 'last_reinforced_at' to today but KEEP its existing 'verified' and 'pinned' status.\n"
+                "- TRIAGE CLASS SHIFTS: If 'glm_triage' is 'monitor' but 'doctor_triage' is 'escalate', this is a CRITICAL instruction. It means the clinic's safety threshold is higher than your original logic. Analyze the patient's symptoms in the 'glm_output' and 'doctor_correction' to create a specific 'verified': false rule. This ensures future cases with these symptoms are escalated immediately. Treat the doctor's choice (doctor_triage) as the absolute GROUND TRUTH for clinic policy, even if the doctor didn't write a text correction.\n\n"
                 "OLD RULES:\n" + json.dumps(old_rules, indent=2) + "\n\n"
                 "TODAY'S CORRECTIONS:\n" + json.dumps(corrections, indent=2) + "\n\n"
                 "Output ONLY JSON: {'rules': [{'action': '...', 'condition': '...', 'added_date': '...', 'last_reinforced_at': '...', 'pinned': bool, 'verified': bool}], 'updated_at': '...'}"
