@@ -22,7 +22,6 @@ export default function Header() {
     { href: "/passport", label: "Passports" },
     { href: "/analytics", label: "Analytics" },
     { href: "/knowledge", label: "Knowledge" },
-    { href: "/agent-team-analytics-dashboard", label: "Agent Team" },
   ];
 
   return (
