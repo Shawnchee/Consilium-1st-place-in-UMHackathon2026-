@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ReactNode, Suspense, useMemo } from "react";
+import { ReactNode, Suspense, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button, Card, Icon } from "@/components/atoms";
 import { PageHeader, SectionTitle } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
@@ -14,6 +15,9 @@ import {
   RADIUS,
 } from "@/lib/tokens";
 import { CLINIC } from "@/lib/clinic";
+import { api } from "@/lib/api";
+import { buildIdentityPayload } from "@/lib/passport-fixtures";
+import type { PassportPayload } from "@/lib/types";
 
 /* ------------------------------------------------------------------
    Identity row — two-column labeled list (mono label small caps +
@@ -108,6 +112,25 @@ function BookletSection({
 }
 
 /* ------------------------------------------------------------------
+   Empty-state hint — used when a section has no data yet (e.g. a
+   patient with no vaccinations or no diagnosis on record).
+   ------------------------------------------------------------------ */
+function EmptyHint({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: "10px 0 4px",
+        fontSize: 13,
+        color: C.muted,
+        fontStyle: "italic",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
    Vaccination status — small dot + label. No wash background.
    ------------------------------------------------------------------ */
 function VaxStatus({
@@ -139,45 +162,17 @@ function VaxStatus({
 }
 
 /* ------------------------------------------------------------------
-   QR placeholder — rendered as a 220px grid of black squares with
-   three finder-pattern corners to suggest a QR. No library.
+   Real QR — encodes the absolute passport URL so any vet can scan it
+   and land on the same public page. Rendered at 220px inside a white
+   card frame with a hairline border.
    ------------------------------------------------------------------ */
-function QRPlaceholder({ size = 220 }: { size?: number }) {
-  const GRID = 25;
-  const cells = useMemo(() => {
-    const arr: boolean[] = [];
-    let seed = 913;
-    for (let i = 0; i < GRID * GRID; i++) {
-      seed = (seed * 9301 + 49297) % 233280;
-      arr.push(seed / 233280 > 0.52);
-    }
-    // Finder patterns: top-left, top-right, bottom-left
-    const placeFinder = (r0: number, c0: number) => {
-      for (let r = 0; r < 7; r++) {
-        for (let c = 0; c < 7; c++) {
-          const idx = (r0 + r) * GRID + (c0 + c);
-          const edge = r === 0 || r === 6 || c === 0 || c === 6;
-          const inner = r >= 2 && r <= 4 && c >= 2 && c <= 4;
-          arr[idx] = edge || inner;
-        }
-      }
-      // quiet ring around finder
-      for (let r = -1; r <= 7; r++) {
-        for (let c = -1; c <= 7; c++) {
-          const rr = r0 + r;
-          const cc = c0 + c;
-          if (rr < 0 || cc < 0 || rr >= GRID || cc >= GRID) continue;
-          const onEdge = r === -1 || r === 7 || c === -1 || c === 7;
-          if (onEdge) arr[rr * GRID + cc] = false;
-        }
-      }
-    };
-    placeFinder(0, 0);
-    placeFinder(0, GRID - 7);
-    placeFinder(GRID - 7, 0);
-    return arr;
-  }, []);
-
+function PassportQR({
+  value,
+  size = 220,
+}: {
+  value: string;
+  size?: number;
+}) {
   return (
     <div
       style={{
@@ -187,27 +182,21 @@ function QRPlaceholder({ size = 220 }: { size?: number }) {
         borderRadius: RADIUS.lg,
         background: "#FFFFFF",
         border: BORDER_HAIRLINE,
+        display: "grid",
+        placeItems: "center",
       }}
     >
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "grid",
-          gridTemplateColumns: `repeat(${GRID}, 1fr)`,
-          gridTemplateRows: `repeat(${GRID}, 1fr)`,
-          gap: 1,
-        }}
-      >
-        {cells.map((on, i) => (
-          <div
-            key={i}
-            style={{
-              background: on ? "#0F172A" : "#FFFFFF",
-            }}
-          />
-        ))}
-      </div>
+      {value ? (
+        <QRCodeSVG
+          value={value}
+          size={size - 20}
+          level="M"
+          fgColor="#0F172A"
+          bgColor="#FFFFFF"
+        />
+      ) : (
+        <div style={{ fontSize: 11, color: C.muted }}>Loading…</div>
+      )}
     </div>
   );
 }
@@ -258,7 +247,34 @@ function PassportContent() {
   const milo = patients.find((x) => x.id === "p1") || patients[0];
   const p = patients.find((x) => x.id === pid) || milo;
 
-  if (!p) {
+  const targetId = pid ?? p?.id ?? null;
+
+  // Resolved passport payload — fetched from the API; falls back to a
+  // patient-identity-only payload if the API is slow or errors.
+  const [payload, setPayload] = useState<PassportPayload | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!targetId) return;
+    let cancelled = false;
+    setPayload(null);
+    setLoadError(null);
+    api
+      .getPassport(targetId)
+      .then((res) => {
+        if (!cancelled) setPayload(res.payload);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : "Failed to load passport");
+        if (p) setPayload(buildIdentityPayload(p));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [targetId, p]);
+
+  if (!p || !payload) {
     return (
       <div style={{ padding: 48, color: C.muted, fontSize: 14 }}>
         Loading passport…
@@ -266,31 +282,21 @@ function PassportContent() {
     );
   }
 
-  // Stable uuid-ish slug for display (demo)
-  const uuid = "9f3c-4a1e-milo-passport";
-  const publicUrl = `consilium.app/passport/${uuid}`;
+  const absolutePassportUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/passport?pid=${encodeURIComponent(p.id)}`
+      : `/passport?pid=${encodeURIComponent(p.id)}`;
+  const displayUrl = absolutePassportUrl.replace(/^https?:\/\//, "");
 
   const copyLink = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
-      navigator.clipboard.writeText(`https://${publicUrl}`).catch(() => {});
+      navigator.clipboard.writeText(absolutePassportUrl).catch(() => {});
     }
     flashToast(`Passport link copied · ${p.name}`);
   };
 
-  const vaccinations = [
-    { name: "DHPP", last: "15 May 2025", next: "May 2026", status: "ok" as const },
-    { name: "Leptospirosis", last: "15 May 2025", next: "May 2026", status: "ok" as const },
-    { name: "Rabies", last: "20 Aug 2024", next: "Aug 2025", status: "overdue" as const },
-    { name: "Bordetella", last: "10 Mar 2025", next: "Mar 2026", status: "due" as const },
-  ];
-
-  const visits = [
-    { date: "01 Dec 2025", reason: "Pre-cystotomy workup — haematuria + straining", outcome: "X-ray confirmed cystoliths · cystotomy booked 02 Dec" },
-    { date: "24 Nov 2025", reason: "External clinic referral note (owner-reported)", outcome: "Amox-clav 7d + Urinary SO trial · symptoms persisted" },
-    { date: "15 May 2025", reason: "Annual wellness exam", outcome: "DHPP + Lepto boosters · bloods normal" },
-    { date: "10 Mar 2025", reason: "Bordetella vaccination", outcome: "No adverse reaction" },
-    { date: "20 Aug 2024", reason: "Rabies vaccination + dental check", outcome: "Healthy · grade 1 tartar noted" },
-  ];
+  const vaccinations = payload.vaccinations;
+  const visits = payload.visits;
 
   return (
     <div style={{ padding: "0 32px 100px", maxWidth: 1480, margin: "0 auto" }}>
@@ -355,8 +361,13 @@ function PassportContent() {
             borderRadius: 4,
           }}
         >
-          {publicUrl}
+          {displayUrl}
         </span>
+        {loadError && (
+          <span style={{ fontSize: 11, color: C.amber }}>
+            · using local fallback ({loadError})
+          </span>
+        )}
       </div>
 
       <div
@@ -425,7 +436,7 @@ function PassportContent() {
                 fontFamily: FONT_MONO,
               }}
             >
-              {CLINIC.name} · Updated 01 Dec 2025
+              {CLINIC.name} · Updated {payload.generatedAt}
             </div>
           </div>
 
@@ -446,7 +457,13 @@ function PassportContent() {
                 <IdentityRow label="Breed" value={p.breed} />
                 <IdentityRow label="Age" value={p.age} />
                 <IdentityRow label="Sex" value={p.sex} />
-                <IdentityRow label="Microchip ID" value="985112007419283" mono />
+                {payload.identity.microchipId && (
+                  <IdentityRow
+                    label="Microchip ID"
+                    value={payload.identity.microchipId}
+                    mono
+                  />
+                )}
                 <IdentityRow
                   label="Owner"
                   value={
@@ -471,6 +488,9 @@ function PassportContent() {
 
             {/* Vaccinations */}
             <BookletSection title="Vaccinations">
+              {vaccinations.length === 0 ? (
+                <EmptyHint>No vaccinations on record yet.</EmptyHint>
+              ) : (
               <table
                 style={{
                   width: "100%",
@@ -558,154 +578,177 @@ function PassportContent() {
                   ))}
                 </tbody>
               </table>
+              )}
             </BookletSection>
 
             {/* Active medications */}
             <BookletSection title="Active medications">
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr",
-                  gap: 12,
-                  padding: "4px 0 6px",
-                }}
-              >
+              {payload.activeMeds.length === 0 ? (
+                <EmptyHint>No active medications.</EmptyHint>
+              ) : (
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr auto",
-                    gap: 16,
-                    padding: "10px 0",
+                    gridTemplateColumns: "1fr",
+                    gap: 12,
+                    padding: "4px 0 6px",
                   }}
                 >
-                  <div>
+                  {payload.activeMeds.map((med, idx) => (
                     <div
+                      key={`${med.drug}-${idx}`}
                       style={{
-                        fontFamily: FONT_MONO,
-                        fontSize: 14,
-                        fontWeight: 700,
-                        color: C.text,
-                        letterSpacing: 0.2,
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 16,
+                        padding: "10px 0",
+                        borderTop:
+                          idx === 0 ? "none" : `1px solid ${C.borderSoft}`,
                       }}
                     >
-                      Amoxicillin-clavulanate 250mg
+                      <div>
+                        <div
+                          style={{
+                            fontFamily: FONT_MONO,
+                            fontSize: 14,
+                            fontWeight: 700,
+                            color: C.text,
+                            letterSpacing: 0.2,
+                          }}
+                        >
+                          {med.drug}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: C.muted,
+                            marginTop: 4,
+                          }}
+                        >
+                          {med.dose}
+                        </div>
+                      </div>
+                      {(med.progressLabel || med.endsLabel) && (
+                        <div style={{ textAlign: "right", minWidth: 140 }}>
+                          {med.progressLabel && (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                textTransform: "uppercase",
+                                letterSpacing: 1.2,
+                                color: C.muted,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {med.progressLabel}
+                            </div>
+                          )}
+                          {typeof med.progress === "number" && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                height: 2,
+                                background: C.borderSoft,
+                                borderRadius: 2,
+                                overflow: "hidden",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: `${Math.max(0, Math.min(1, med.progress)) * 100}%`,
+                                  height: "100%",
+                                  background: C.text,
+                                }}
+                              />
+                            </div>
+                          )}
+                          {med.endsLabel && (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: C.hint,
+                                marginTop: 6,
+                                fontFamily: FONT_MONO,
+                              }}
+                            >
+                              {med.endsLabel}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-                      12.5 mg/kg PO twice daily · with food
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", minWidth: 140 }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        textTransform: "uppercase",
-                        letterSpacing: 1.2,
-                        color: C.muted,
-                        fontWeight: 700,
-                      }}
-                    >
-                      Day 7 of 7
-                    </div>
-                    {/* Hairline progress rule */}
-                    <div
-                      style={{
-                        marginTop: 8,
-                        height: 2,
-                        background: C.borderSoft,
-                        borderRadius: 2,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${(7 / 7) * 100}%`,
-                          height: "100%",
-                          background: C.text,
-                        }}
-                      />
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: C.hint,
-                        marginTop: 6,
-                        fontFamily: FONT_MONO,
-                      }}
-                    >
-                      Ends 01 Dec 2025
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </div>
+              )}
             </BookletSection>
 
             {/* Last diagnosis */}
             <BookletSection title="Last diagnosis">
-              <div style={{ padding: "4px 0 8px" }}>
-                <div
-                  style={{
-                    fontFamily: FONT_SERIF,
-                    fontSize: 18,
-                    fontWeight: 600,
-                    color: C.text,
-                    letterSpacing: -0.2,
-                  }}
-                >
-                  Bladder stones — surgery scheduled
+              {payload.lastDiagnosis ? (
+                <div style={{ padding: "4px 0 8px" }}>
+                  <div
+                    style={{
+                      fontFamily: FONT_SERIF,
+                      fontSize: 18,
+                      fontWeight: 600,
+                      color: C.text,
+                      letterSpacing: -0.2,
+                    }}
+                  >
+                    {payload.lastDiagnosis.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: C.muted,
+                      marginTop: 6,
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    {payload.lastDiagnosis.detail}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: C.hint,
+                      marginTop: 10,
+                      fontFamily: FONT_MONO,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    {payload.lastDiagnosis.bylineDoctor} ·{" "}
+                    {payload.lastDiagnosis.bylineDate}
+                  </div>
                 </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: C.muted,
-                    marginTop: 6,
-                    lineHeight: 1.55,
-                  }}
-                >
-                  Cystolithiasis with secondary urolithiasis. Two large cystoliths
-                  nearly filling the bladder, plus smaller uroliths scattered along
-                  the urethra. Cystotomy scheduled for 02 Dec 2025.
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: C.hint,
-                    marginTop: 10,
-                    fontFamily: FONT_MONO,
-                    letterSpacing: 0.2,
-                  }}
-                >
-                  {CLINIC.doctor} · 01 Dec 2025
-                </div>
-              </div>
+              ) : (
+                <EmptyHint>No diagnosis on record yet.</EmptyHint>
+              )}
             </BookletSection>
 
             {/* Notes for next vet — italic serif, hairline block */}
-            <BookletSection title="Notes for next vet">
-              <blockquote
-                style={{
-                  margin: "6px 0 4px",
-                  padding: "14px 20px",
-                  borderLeft: `2px solid ${C.border}`,
-                  borderTop: `1px solid ${C.borderSoft}`,
-                  borderRight: `1px solid ${C.borderSoft}`,
-                  borderBottom: `1px solid ${C.borderSoft}`,
-                  borderRadius: 2,
-                  fontFamily: FONT_SERIF,
-                  fontStyle: "italic",
-                  fontSize: 15,
-                  color: C.ink,
-                  lineHeight: 1.6,
-                  background: "#FFFFFF",
-                }}
-              >
-                Pre-cystotomy patient. Submit removed stones for analysis
-                (likely struvite — failed medical dissolution despite 7-day
-                antibiotic + Urinary SO trial at external clinic). Continue
-                Urinary SO post-op pending lab result. Recheck UA at 2 + 6
-                weeks. Watch for urethral obstruction signs in the meantime —
-                recurrent species/breed risk.
-              </blockquote>
-            </BookletSection>
+            {payload.notesForNextVet && (
+              <BookletSection title="Notes for next vet">
+                <blockquote
+                  style={{
+                    margin: "6px 0 4px",
+                    padding: "14px 20px",
+                    borderLeft: `2px solid ${C.border}`,
+                    borderTop: `1px solid ${C.borderSoft}`,
+                    borderRight: `1px solid ${C.borderSoft}`,
+                    borderBottom: `1px solid ${C.borderSoft}`,
+                    borderRadius: 2,
+                    fontFamily: FONT_SERIF,
+                    fontStyle: "italic",
+                    fontSize: 15,
+                    color: C.ink,
+                    lineHeight: 1.6,
+                    background: "#FFFFFF",
+                  }}
+                >
+                  {payload.notesForNextVet}
+                </blockquote>
+              </BookletSection>
+            )}
 
             {/* Emergency contact */}
             <BookletSection title="Emergency contact">
@@ -751,7 +794,7 @@ function PassportContent() {
               letterSpacing: 0.2,
             }}
           >
-            <span>consilium · passport {uuid}</span>
+            <span>consilium · passport {payload.shareUuid}</span>
             <span>page 1 of 1</span>
           </div>
         </Card>
@@ -776,7 +819,7 @@ function PassportContent() {
                 padding: "4px 0 18px",
               }}
             >
-              <QRPlaceholder size={220} />
+              <PassportQR value={absolutePassportUrl} size={220} />
             </div>
             <div
               style={{
@@ -789,7 +832,7 @@ function PassportContent() {
                 marginBottom: 14,
               }}
             >
-              {publicUrl}
+              {displayUrl}
             </div>
             <div style={{ display: "grid", gap: 8 }}>
               <Button size="md" style={{ width: "100%" }} onClick={copyLink}>
