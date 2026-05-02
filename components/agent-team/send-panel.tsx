@@ -47,7 +47,20 @@ export function SendPanel({
   /** Override copy for the empty-state hint. */
   emptyHint?: string;
 }) {
+  // Resolve initial chat ID with a priority chain:
+  //   1. explicit prop (e.g. patient.owner_telegram from the DB)
+  //   2. localStorage — sticks across reloads on this browser
+  //   3. NEXT_PUBLIC_DEV_TELEGRAM_CHAT_ID — env-var escape hatch for dev
+  // Resolved on mount inside an effect to keep SSR markup stable.
   const [chatId, setChatId] = useState(initialChatId);
+  useEffect(() => {
+    if (initialChatId) return;
+    if (typeof window === "undefined") return;
+    const fromStorage = window.localStorage.getItem("consilium.telegramChatId");
+    const fromEnv = process.env.NEXT_PUBLIC_DEV_TELEGRAM_CHAT_ID ?? "";
+    const resolved = fromStorage || fromEnv;
+    if (resolved) setChatId(resolved);
+  }, [initialChatId]);
   const [bodyDraft, setBodyDraft] = useState("");
   const [aftercareDraft, setAftercareDraft] = useState("");
   const [status, setStatus] = useState<SendStatus>({ kind: "idle" });
@@ -136,6 +149,7 @@ export function SendPanel({
       if (!res.ok || !json.ok || typeof json.messageId !== "number") {
         throw new Error(json.error ?? `send failed (${res.status})`);
       }
+      rememberChatId(chatId);
       setStatus({
         kind: "sent",
         messageId: json.messageId,
@@ -163,6 +177,7 @@ export function SendPanel({
         chatId,
         { bodyDraft, aftercare: aftercareLines },
       );
+      rememberChatId(chatId);
       setCloseStatus({
         kind: "closed",
         passportUrl: r.passportUrl,
@@ -269,7 +284,7 @@ export function SendPanel({
           <div style={{ fontSize: 11, color: C.hint, marginTop: 4 }}>
             {initialChatId
               ? "Prefilled from patient record. Edit to send to a different chat."
-              : "Ask the owner once — this saves to the patient record on success."}
+              : "Saved to this browser after the first successful send — type once, it sticks."}
           </div>
         </div>
         <button
@@ -486,6 +501,17 @@ function SoapLabel({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+function rememberChatId(chatId: string): void {
+  if (typeof window === "undefined") return;
+  const trimmed = chatId.trim();
+  if (!trimmed) return;
+  try {
+    window.localStorage.setItem("consilium.telegramChatId", trimmed);
+  } catch {
+    // Storage can throw in private mode / quota exceeded — non-fatal.
+  }
 }
 
 const textareaStyle: React.CSSProperties = {
