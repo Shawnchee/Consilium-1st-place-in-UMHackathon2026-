@@ -279,6 +279,7 @@ export async function handleOwnerMessage(
     role: "owner",
     text: photoUrls.length > 0 ? `${text}  [photo: ${photoUrls.length}]` : text,
     ts: nowIso(),
+    photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
   };
 
   const result = await runTriage({

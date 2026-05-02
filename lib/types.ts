@@ -50,7 +50,16 @@ export type ToolName =
  * subsequent turns.
  */
 export type ConversationTurn =
-  | { role: "owner"; text: string; ts: string }
+  | {
+      role: "owner";
+      text: string;
+      ts: string;
+      /** Public URLs of any photos the owner attached to this turn
+       *  (downloaded from Telegram → owner-photos bucket). Used by the
+       *  escalation modal to render thumbnails so the doctor sees what
+       *  the owner saw. */
+      photoUrls?: string[];
+    }
   | {
       role: "bot_tool";
       tool: ToolName;
