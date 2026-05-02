@@ -332,7 +332,7 @@ export function parseCreateVisitRequest(raw: unknown): CreateVisitRequest {
 
 // ─── /api/corrections ───────────────────────────────────────────────────────
 export interface CorrectionRequest {
-  feature: "triage" | "billing" | "prescription" | "brief";
+  feature: "triage" | "billing" | "prescription" | "brief" | "soap" | "todos";
   visitId?: string;
   followupId?: string;
   glmOutput: string;
@@ -344,7 +344,7 @@ export type CorrectionResponse = { ok: true; id: string };
 export function parseCorrectionRequest(raw: unknown): CorrectionRequest {
   const r = raw as Partial<CorrectionRequest>;
   if (!r || typeof r !== "object") throw new ApiError(400, "body must be object");
-  const features = ["triage", "billing", "prescription", "brief"] as const;
+  const features = ["triage", "billing", "prescription", "brief", "soap", "todos"] as const;
   if (!features.includes(r.feature as (typeof features)[number]))
     throw new ApiError(400, "feature must be one of: " + features.join(", "));
   if (typeof r.glmOutput !== "string")

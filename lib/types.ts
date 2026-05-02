@@ -98,6 +98,7 @@ export interface BillingItem {
   price: number;
   flagged: boolean;
   note: string;
+  selected?: boolean;
 }
 
 export interface PrescriptionItem {

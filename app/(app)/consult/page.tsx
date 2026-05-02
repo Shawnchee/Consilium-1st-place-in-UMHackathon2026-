@@ -144,7 +144,9 @@ function OutputCardShell({
 // ─────────────────────────────────────────────────────────────────────
 // SOAP
 // ─────────────────────────────────────────────────────────────────────
-function SoapCard({ s, onApprove }: { s: SoapNote; onApprove: () => void }) {
+function SoapCard({ s, onEdit }: { s: SoapNote; onEdit: (s: SoapNote) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(s);
   const rows: { k: "S" | "O" | "A" | "P"; v: string }[] = [
     { k: "S", v: s.S },
     { k: "O", v: s.O },
@@ -159,16 +161,30 @@ function SoapCard({ s, onApprove }: { s: SoapNote; onApprove: () => void }) {
       footer={
         <>
           <div style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" icon={Icon.edit(13)}>
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
-            Approve
-          </Button>
+          {editing ? (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { setDraft(s); setEditing(false); }}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit</Button>
+            </>
+          )}
         </>
       }
     >
-      {rows.map((r, i) => (
+      {editing ? (
+        <div style={{ display: "grid", gap: 14, padding: "10px 0" }}>
+          {(["S", "O", "A", "P"] as const).map(k => (
+            <div key={k} style={{ display: "grid", gridTemplateColumns: "28px 1fr", gap: 14 }}>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 11, fontWeight: 700, color: C.muted, display: "inline-grid", placeItems: "center", width: 24, height: 22, border: `1px solid ${C.border}`, borderRadius: 4 }}>{k}</span>
+              <textarea value={draft[k]} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))} style={{ width: "100%", padding: "8px 12px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 14, fontFamily: "inherit", minHeight: 60 }} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        rows.map((r, i) => (
         <div
           key={r.k}
           style={{
@@ -206,7 +222,7 @@ function SoapCard({ s, onApprove }: { s: SoapNote; onApprove: () => void }) {
             />
           </div>
         </div>
-      ))}
+      )))}
     </OutputCardShell>
   );
 }
@@ -216,11 +232,14 @@ function SoapCard({ s, onApprove }: { s: SoapNote; onApprove: () => void }) {
 // ─────────────────────────────────────────────────────────────────────
 function PrescriptionCard({
   rx,
-  onApprove,
+  onEdit,
 }: {
   rx: PrescriptionItem[];
-  onApprove: () => void;
+  onEdit: (rx: PrescriptionItem[]) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(rx);
+
   return (
     <OutputCardShell
       title="Prescription"
@@ -229,16 +248,37 @@ function PrescriptionCard({
       footer={
         <>
           <div style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" icon={Icon.edit(13)}>
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
-            Approve
-          </Button>
+          {editing ? (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { setDraft(rx); setEditing(false); }}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit / Add</Button>
+            </>
+          )}
         </>
       }
     >
-      {rx.map((r, i) => (
+      {editing ? (
+        <div style={{ display: "grid", gap: 14, padding: "10px 0" }}>
+          {draft.map((r, i) => (
+            <div key={i} style={{ display: "grid", gap: 8, paddingBottom: 10, borderBottom: i < draft.length - 1 ? `1px solid ${C.borderSoft}` : "none" }}>
+              <input value={r.drug} onChange={e => { const n = [...draft]; n[i].drug = e.target.value; setDraft(n); }} placeholder="Drug name" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                <input value={r.dose} onChange={e => { const n = [...draft]; n[i].dose = e.target.value; setDraft(n); }} placeholder="Dose" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, fontFamily: "inherit" }} />
+                <input value={r.dur} onChange={e => { const n = [...draft]; n[i].dur = e.target.value; setDraft(n); }} placeholder="Duration" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, fontFamily: "inherit" }} />
+                <input value={r.qty} onChange={e => { const n = [...draft]; n[i].qty = e.target.value; setDraft(n); }} placeholder="Qty" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 12, fontFamily: "inherit" }} />
+              </div>
+            </div>
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => setDraft([...draft, { drug: "", dose: "", dur: "", qty: "" }])}>
+            + Add drug
+          </Button>
+        </div>
+      ) : (
+        rx.map((r, i) => (
         <div
           key={i}
           style={{
@@ -296,7 +336,7 @@ function PrescriptionCard({
             ))}
           </div>
         </div>
-      ))}
+      )))}
     </OutputCardShell>
   );
 }
@@ -306,133 +346,120 @@ function PrescriptionCard({
 // ─────────────────────────────────────────────────────────────────────
 function BillingCard({
   items,
-  total,
-  flagged,
-  onApprove,
+  onEdit,
 }: {
   items: BillingItem[];
-  total: number;
-  flagged: number;
-  onApprove: () => void;
+  onEdit: (items: BillingItem[]) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(items);
+
+  useEffect(() => setDraft(items), [items]);
+
+  const selectedCount = items.filter(i => i.selected === true).length;
+
   return (
     <OutputCardShell
-      title="Billing recovery"
-      meta={`${items.length} items`}
+      title="Procedures / Medications"
+      meta={`${selectedCount} checked`}
       delay={180}
       footer={
         <>
-          <div
-            style={{
-              fontFamily: FONT_SERIF,
-              fontSize: 18,
-              fontWeight: 600,
-              color: C.text,
-              letterSpacing: -0.2,
-            }}
-          >
-            Total{" "}
-            <span style={{ fontFamily: FONT_MONO, fontSize: 15 }}>
-              RM {total}
-            </span>
-          </div>
           <div style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" icon={Icon.edit(13)}>
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
-            Approve
-          </Button>
+          {editing ? (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { setDraft(items); setEditing(false); }}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit / Add</Button>
+            </>
+          )}
         </>
       }
     >
-      {items.map((it, i) => (
-        <div
-          key={i}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "18px 1fr auto",
-            gap: 12,
-            alignItems: "start",
-            padding: "10px 12px",
-            marginLeft: -8,
-            marginRight: -8,
-            marginBottom: 2,
-            borderRadius: 8,
-            borderLeft: it.flagged
-              ? `2px solid ${C.amber}`
-              : `2px solid transparent`,
-            background: "transparent",
-          }}
-        >
-          <span
-            style={{
-              color: it.flagged ? C.amber : C.green,
-              display: "inline-flex",
-              marginTop: 2,
-            }}
-          >
-            {it.flagged ? Icon.warn(14) : Icon.check(14)}
-          </span>
-          <div style={{ minWidth: 0 }}>
+      {editing ? (
+        <div style={{ display: "grid", gap: 10, padding: "10px 0" }}>
+          {draft.map((it, i) => (
+            <div key={i} style={{ display: "flex", gap: 10 }}>
+              <input value={it.item} onChange={e => { const n = [...draft]; n[i].item = e.target.value; setDraft(n); }} placeholder="Item name" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
+            </div>
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => setDraft([...draft, { item: "", price: 0, flagged: false, note: "", selected: true }])}>
+            + Add item
+          </Button>
+        </div>
+      ) : (
+        items.map((it, i) => {
+          const isSelected = it.selected === true;
+          return (
             <div
+              key={i}
+              onClick={() => {
+                 const n = [...items];
+                 n[i] = { ...n[i], selected: !isSelected };
+                 onEdit(n);
+              }}
               style={{
-                fontSize: 13.5,
-                color: C.text,
-                fontWeight: it.flagged ? 600 : 500,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 0",
+                cursor: "pointer",
+                borderTop: i > 0 ? `1px solid ${C.borderSoft}` : "none",
               }}
             >
-              {it.item}
-            </div>
-            {it.flagged && (
               <div
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  marginTop: 5,
-                  padding: "2px 8px",
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  letterSpacing: 0.3,
-                  color: C.amber,
-                  border: `1px solid ${C.amberBorder}`,
-                  borderRadius: 999,
-                  background: "transparent",
+                  width: 18,
+                  height: 18,
+                  borderRadius: 4,
+                  border: `1.5px solid ${isSelected ? C.green : C.border}`,
+                  background: isSelected ? C.green : "transparent",
+                  color: "#fff",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                  transition: "all 140ms ease",
                 }}
               >
-                {Icon.warn(10)} In notes, not yet billed
+                {isSelected && Icon.check(11)}
               </div>
-            )}
-          </div>
-          <div
-            style={{
-              fontFamily: FONT_MONO,
-              fontSize: 13,
-              fontWeight: 600,
-              color: C.text,
-              whiteSpace: "nowrap",
-            }}
-          >
-            RM {it.price}
-          </div>
-        </div>
-      ))}
-      <div
-        style={{
-          marginTop: 14,
-          paddingTop: 12,
-          borderTop: `1px solid ${C.borderSoft}`,
-          fontSize: 11,
-          color: C.hint,
-          lineHeight: 1.5,
-          fontStyle: "italic",
-        }}
-      >
-        Impact: 10% billing recovery × 400 consults/month × RM 250 avg = RM
-        10,000/month recovered.
-      </div>
-      <div style={{ display: "none" }}>{flagged}</div>
+              <div
+                style={{
+                  flex: 1,
+                  fontSize: 13.5,
+                  color: isSelected ? C.text : C.muted,
+                  textDecoration: "none",
+                  lineHeight: 1.4,
+                }}
+              >
+                {it.item}
+              </div>
+              {it.flagged && (
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    padding: "2px 8px",
+                    fontSize: 10.5,
+                    fontWeight: 600,
+                    letterSpacing: 0.3,
+                    color: C.amber,
+                    border: `1px solid ${C.amberBorder}`,
+                    borderRadius: 999,
+                    background: "transparent",
+                  }}
+                >
+                  {Icon.warn(10)} In notes
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
     </OutputCardShell>
   );
 }
@@ -440,8 +467,11 @@ function BillingCard({
 // ─────────────────────────────────────────────────────────────────────
 // Todos
 // ─────────────────────────────────────────────────────────────────────
-function TodoCard({ todos, onApprove }: { todos: TodoItem[]; onApprove: () => void }) {
+function TodoCard({ todos, onEdit }: { todos: TodoItem[]; onEdit: (todos: TodoItem[]) => void; }) {
   const [done, setDone] = useState<Record<number, boolean>>({});
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(todos);
+
   const assigneeTone = (who: string): "green" | "amber" | "neutral" => {
     const w = who.toLowerCase();
     if (w.includes("vet") || w.includes("doctor")) return "green";
@@ -456,13 +486,33 @@ function TodoCard({ todos, onApprove }: { todos: TodoItem[]; onApprove: () => vo
       footer={
         <>
           <div style={{ flex: 1 }} />
-          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={onApprove}>
-            Approve
-          </Button>
+          {editing ? (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => { setDraft(todos); setEditing(false); }}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={() => { onEdit(draft); setEditing(false); }}>Save Edit</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" icon={Icon.edit(13)} onClick={() => setEditing(true)}>Edit / Add</Button>
+            </>
+          )}
         </>
       }
     >
-      {todos.map((t, i) => (
+      {editing ? (
+        <div style={{ display: "grid", gap: 10, padding: "10px 0" }}>
+          {draft.map((t, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 10 }}>
+              <input value={t.task} onChange={e => { const n = [...draft]; n[i].task = e.target.value; setDraft(n); }} placeholder="Task description" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
+              <input value={t.who} onChange={e => { const n = [...draft]; n[i].who = e.target.value; setDraft(n); }} placeholder="Assignee" style={{ width: "100%", padding: "6px 10px", border: `1px solid ${C.border}`, borderRadius: 4, fontSize: 13, fontFamily: "inherit" }} />
+            </div>
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => setDraft([...draft, { task: "", who: "" }])}>
+            + Add task
+          </Button>
+        </div>
+      ) : (
+        todos.map((t, i) => (
         <div
           key={i}
           onClick={() => setDone((d) => ({ ...d, [i]: !d[i] }))}
@@ -506,7 +556,7 @@ function TodoCard({ todos, onApprove }: { todos: TodoItem[]; onApprove: () => vo
             {t.who}
           </Pill>
         </div>
-      ))}
+      )))}
     </OutputCardShell>
   );
 }
@@ -1167,15 +1217,17 @@ function ConsultContent() {
   // pipeline produces `summary.doctorSummary.soap`, `summary.prescription`,
   // `summary.billing`, `summary.todos` — the existing card components only
   // ever wanted these four fields.
+  const [overrides, setOverrides] = useState<Partial<ConsultOutput>>({});
   const output: ConsultOutput | null = useMemo(() => {
     if (!stream.result) return null;
     return {
-      soap: stream.result.summary.doctorSummary.soap,
-      prescription: stream.result.summary.prescription,
-      billing: stream.result.summary.billing,
-      todos: stream.result.summary.todos,
+      soap: overrides.soap || stream.result.summary.doctorSummary.soap,
+      prescription: overrides.prescription || stream.result.summary.prescription,
+      billing: overrides.billing || stream.result.summary.billing,
+      todos: overrides.todos || stream.result.summary.todos,
     };
-  }, [stream.result]);
+  }, [stream.result, overrides]);
+
   const generating = stream.running;
   const billTotal = useMemo(
     () => (output ? output.billing.reduce((a, b) => a + b.price, 0) : 0),
@@ -1884,7 +1936,7 @@ function ConsultContent() {
                       rawNotes: notes,
                       soap: output.soap,
                       prescription: output.prescription,
-                      billing: output.billing,
+                      billing: output.billing.filter((b) => b.selected === true),
                       todos: output.todos,
                     });
                     setSavedVisitId(visit.id);
@@ -2026,59 +2078,32 @@ function ConsultContent() {
             <div style={{ display: "grid", gap: 14 }}>
               <SoapCard
                 s={output.soap}
-                onApprove={() => flashToast("SOAP note approved")}
+                onEdit={(newSoap) => {
+                  setOverrides(o => ({ ...o, soap: newSoap }));
+                  flashToast("SOAP note edit saved");
+                }}
               />
               <PrescriptionCard
                 rx={output.prescription}
-                onApprove={() =>
-                  flashToast("Prescription approved · queued for dispensing")
-                }
+                onEdit={(newRx) => {
+                  setOverrides(o => ({ ...o, prescription: newRx }));
+                  flashToast("Prescription edit saved");
+                }}
               />
-
-              {/* Recoverable callout — thin amber border, no wash */}
-              {billFlagged > 0 && (
-                <div
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 14px",
-                    borderRadius: 999,
-                    border: `1px solid ${C.amberBorder}`,
-                    background: "transparent",
-                    color: C.amber,
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    alignSelf: "flex-start",
-                    width: "fit-content",
-                    animation: "slideIn 380ms ease both",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: C.amber,
-                      display: "inline-block",
-                    }}
-                  />
-                  <span style={{ fontFamily: FONT_MONO }}>RM {billFlagged}</span>{" "}
-                  recoverable — 2 items flagged in notes, not yet billed
-                </div>
-              )}
 
               <BillingCard
                 items={output.billing}
-                total={billTotal}
-                flagged={billFlagged}
-                onApprove={() =>
-                  flashToast(`Billing approved · RM ${billFlagged} recovered`)
-                }
+                onEdit={(newBilling) => {
+                  setOverrides(o => ({ ...o, billing: newBilling }));
+                  flashToast("Checklist edit saved");
+                }}
               />
               <TodoCard
                 todos={output.todos}
-                onApprove={() => flashToast("Staff to-dos dispatched")}
+                onEdit={(newTodos) => {
+                  setOverrides(o => ({ ...o, todos: newTodos }));
+                  flashToast("Todos edit saved");
+                }}
               />
             </div>
           )}

@@ -229,7 +229,9 @@ function DiagramNode({
       style={{
         width,
         background: colors.bg,
-        border: `1px solid ${colors.border}`,
+        borderTop: `1px solid ${colors.border}`,
+        borderRight: `1px solid ${colors.border}`,
+        borderBottom: `1px solid ${colors.border}`,
         borderLeft: accent ? `3px solid ${C.text}` : `1px solid ${colors.border}`,
         borderRadius: 10,
         padding: "12px 14px",
