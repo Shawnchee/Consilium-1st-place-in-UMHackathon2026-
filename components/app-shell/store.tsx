@@ -37,7 +37,7 @@ interface StoreCtx {
   expandedPatient: string | null;
   setExpandedPatient: (id: string | null) => void;
   approveClear: (f: FollowUp) => void;
-  changeFollowUpLevel: (f: FollowUp, level: FollowUpLevel) => void;
+  changeFollowUpLevel: (f: FollowUp, level: FollowUpLevel, reason?: string) => void;
   updateFollowupDraft: (f: FollowUp, draft: string) => void;
 }
 

@@ -10,7 +10,7 @@ import {
   RADIUS,
   SHADOW_CARD,
 } from "@/lib/tokens";
-import type { ConversationTurn, Differential, ToolName } from "@/lib/types";
+import type { ConversationTurn, Differential, FollowUpLevel, ToolName } from "@/lib/types";
 import { useStore } from "./store";
 
 const TOOL_LABEL: Record<ToolName, string> = {
