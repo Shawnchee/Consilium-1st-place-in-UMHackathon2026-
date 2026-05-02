@@ -38,9 +38,16 @@ const PRICING = {
   sonnet: { input: 3, output: 15 },
 };
 
-const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: string }[] = [
+const DEMO_FIXTURES: {
+  id: string;
+  patientId: string;
+  label: string;
+  notes: string;
+  transcript: string;
+}[] = [
   {
     id: "p1",
+    patientId: "p1",
     label: "Milo — pre-cystotomy workup",
     notes:
       "8yo MN Mini Schnauzer, 9.8kg. 2-wk haematuria + straining. External clinic 1 week ago: amox-clav 250mg BID x7d + Royal Canin Urinary SO — no improvement. QAR. T 38.7, HR 110, RR 28. Mild caudal abdominal discomfort. Abdominal X-ray: 2 large cystoliths nearly filling bladder + multiple uroliths along urethra. Pre-op bloods + urine C/S today. NPO from 22:00. Cystotomy 02 Dec 09:00.",
@@ -49,6 +56,7 @@ const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: str
   },
   {
     id: "p2",
+    patientId: "p2",
     label: "Luna — anorexia 48h",
     notes:
       "2-day anorexia, no vomiting, normal water intake. Mild dental tartar grade 2. T 38.9, HR 180, RR 28. Recommended bloods + imaging. Started SC fluids 80 mL Hartmann's, Cerenia 1 mg/kg SC. Bland diet dispensed.",
@@ -57,6 +65,7 @@ const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: str
   },
   {
     id: "p3",
+    patientId: "p3",
     label: "Rex — CCL post-op D3",
     notes:
       "TPLO right stifle day 3. Incision clean, no swelling or discharge. Weight-bearing 30% on RH. Continuing Meloxicam 0.1 mg/kg PO SID + Gabapentin 10 mg/kg PO TID. Owner reports good icing compliance. Recheck D14 for suture removal.",
@@ -70,7 +79,8 @@ const DEMO_FIXTURES: { id: string; label: string; notes: string; transcript: str
     // questions the prescription-agent prompt explicitly considers
     // Tavily-worthy. Use this fixture in the demo to prove the live
     // web-search lights up for non-routine cases.
-    id: "p1",
+    id: "p1-onsior",
+    patientId: "p1",
     label: "Milo — Onsior post-op question (Tavily demo)",
     notes:
       "Owner asking about switching Milo from Meloxicam to Onsior (robenacoxib) for post-cystotomy pain — read it's gentler on the kidneys. Confirm current canine safety profile, dose for 9.8kg dog, recommended post-op duration, and any active recalls before tomorrow's surgery.",
@@ -86,7 +96,7 @@ export default function AgentDashboardClient() {
   async function runPipeline() {
     const f = DEMO_FIXTURES.find((x) => x.id === fixture)!;
     await stream.start({
-      patientId: f.id,
+      patientId: f.patientId,
       notes: f.notes,
       transcript: f.transcript,
     });
