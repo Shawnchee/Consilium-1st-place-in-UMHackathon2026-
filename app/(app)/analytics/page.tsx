@@ -844,7 +844,8 @@ export default function AnalyticsPage() {
   };
 
   useEffect(() => {
-    fetchAnalytics();
+    const t = setTimeout(() => fetchAnalytics(), 0);
+    return () => clearTimeout(t);
   }, []);
 
   const topDiagnoses = useMemo(
@@ -967,7 +968,7 @@ export default function AnalyticsPage() {
         title="GLM 94% vs keyword 63%."
         caption={
           <>
-            Keyword matching collapses on natural human language. GLM doesn't.
+            Keyword matching collapses on natural human language. GLM doesn&apos;t.
             That delta is why the model is non-removable.
           </>
         }

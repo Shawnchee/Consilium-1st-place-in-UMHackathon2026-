@@ -341,8 +341,11 @@ export default function EscalationModal() {
   // Reset editor whenever a different escalation opens (or its draft changes
   // upstream — e.g. owner sent another message and triage re-ran).
   useEffect(() => {
-    setEditing(false);
-    setEditedDraft(escalation?.draft ?? "");
+    const t = setTimeout(() => {
+      setEditing(false);
+      setEditedDraft(escalation?.draft ?? "");
+    }, 0);
+    return () => clearTimeout(t);
   }, [escalation?.id, escalation?.draft]);
 
   if (!escalation) return null;

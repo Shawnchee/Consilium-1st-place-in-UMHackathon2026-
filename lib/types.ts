@@ -26,6 +26,7 @@ export interface Patient {
   tagColor: TagColor;
   reason: string;
   brief: Brief;
+  owner_telegram?: string;
 }
 
 export type FollowUpLevel = "escalate" | "monitor" | "clear";

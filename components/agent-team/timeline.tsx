@@ -5,6 +5,7 @@
  * Shared between dashboard and consult sidebar.
  */
 
+import { useState } from "react";
 import { BORDER_HAIRLINE, C, FONT_MONO, SHADOW_CARD } from "@/lib/tokens";
 import {
   SUB_AGENTS,
@@ -25,7 +26,8 @@ export function Timeline({
   tEnd: number | null;
   compact?: boolean;
 }) {
-  const end = tEnd ?? Date.now();
+  const [now] = useState(() => Date.now());
+  const end = tEnd ?? now;
   const start = t0 ?? end;
   const span = Math.max(end - start, 1);
 

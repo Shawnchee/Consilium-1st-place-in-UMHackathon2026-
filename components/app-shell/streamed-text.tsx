@@ -33,7 +33,9 @@ export function StreamedText({
   const done = cursor >= words.length;
 
   useEffect(() => {
-    setCursor(0);
+    const startDefer = setTimeout(() => {
+      setCursor(0);
+    }, 0);
     let timer: ReturnType<typeof setInterval> | null = null;
     const start = setTimeout(() => {
       timer = setInterval(() => {
@@ -47,6 +49,7 @@ export function StreamedText({
       }, intervalMs);
     }, startDelayMs);
     return () => {
+      clearTimeout(startDefer);
       clearTimeout(start);
       if (timer) clearInterval(timer);
     };

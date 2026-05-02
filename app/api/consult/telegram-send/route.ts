@@ -40,8 +40,16 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => {
       throw new ApiError(400, "invalid JSON");
     });
-    const { chatId, body: messageBody, aftercare, patientId } =
-      parseTelegramSendRequest(body);
+    const {
+      chatId,
+      body: messageBody,
+      aftercare,
+      patientId,
+      patientName,
+      visitId,
+      status: reqStatus,
+      recommendedAction,
+    } = parseTelegramSendRequest(body);
 
     const message = formatMessage(messageBody, aftercare ?? []);
 
@@ -50,8 +58,6 @@ export async function POST(req: Request) {
       const r = await sendTelegramMessage(chatId, message);
       messageId = r.messageId;
     } catch (err) {
-      // Telegram errors are surfaced to the doctor — they include things
-      // like "chat not found" / "bot blocked" which they need to act on.
       const detail = err instanceof Error ? err.message : String(err);
       return NextResponse.json(
         { error: `telegram send failed: ${detail}` },
@@ -59,7 +65,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const chatIdSaved = await saveChatIdToPatient(patientId, chatId);
+    const chatIdSaved = await saveChatIdToPatient({
+      patientId,
+      patientName,
+      chatId,
+      visitId,
+      status: reqStatus,
+      recommendedAction,
+      draftResponse: message,
+    });
 
     return json<TelegramSendResponse>({
       ok: true,
@@ -96,25 +110,66 @@ function formatMessage(body: string, aftercare: string[]): string {
  * auth in front of the route; this is the cheapest mitigation absent
  * that.
  */
-async function saveChatIdToPatient(
-  patientId: string,
-  chatId: string,
-): Promise<boolean> {
+async function saveChatIdToPatient(req: {
+  patientId: string;
+  patientName: string;
+  chatId: string;
+  visitId?: string;
+  status?: string;
+  recommendedAction?: string;
+  draftResponse?: string;
+}): Promise<boolean> {
   if (!hasSupabaseAdmin()) return false;
   try {
     const db = getSupabaseServer();
-    const { data, error } = await db
+    
+    // 1. Update the patient record (long-term memory)
+    const { data: patientData, error: patientError } = await db
       .from("patients")
-      .update({ owner_telegram: chatId })
-      .eq("id", patientId)
-      .is("owner_telegram", null)
+      .update({ owner_telegram: req.chatId })
+      .eq("id", req.patientId)
       .select("id")
       .maybeSingle<{ id: string }>();
-    if (error) throw error;
-    return Boolean(data?.id);
+    
+    if (patientError) {
+      console.error("[telegram-send] failed to update patient", patientError);
+    }
+
+    // 2. Create or Update the follow-up record for this visit
+    if (req.visitId) {
+      const { data: existingFup } = await db
+        .from("followups")
+        .select("id")
+        .eq("visit_id", req.visitId)
+        .maybeSingle();
+
+      const fupData = {
+        visit_id: req.visitId,
+        telegram_chat_id: req.chatId,
+        status: req.status || "monitor",
+        recommended_action: req.recommendedAction || "Monitor for 48h",
+        draft_response: req.draftResponse,
+        sent_at: new Date().toISOString(),
+      };
+
+      if (existingFup) {
+        const { error: fupError } = await db
+          .from("followups")
+          .update(fupData)
+          .eq("id", existingFup.id);
+        if (fupError) console.error("[telegram-send] failed to update followup", fupError);
+      } else {
+        const { error: fupError } = await db
+          .from("followups")
+          .insert(fupData);
+        if (fupError) console.error("[telegram-send] failed to insert followup", fupError);
+      }
+    }
+
+    return Boolean(patientData?.id);
   } catch (err) {
-    console.warn(
-      "[telegram-send] owner_telegram save failed:",
+    console.error(
+      "[telegram-send] unexpected save error:",
       err instanceof Error ? err.message : "unknown error",
     );
     return false;

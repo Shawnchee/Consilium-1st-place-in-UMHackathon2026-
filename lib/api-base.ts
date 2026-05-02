@@ -25,6 +25,22 @@ export async function postJSON<Req, Res>(url: string, body: Req): Promise<Res> {
 }
 
 /**
+ * Generic multipart POST — for callers that build their own FormData
+ * (e.g. /api/transcribe sending an audio Blob). Returns parsed JSON.
+ */
+export async function postForm<Res>(
+  url: string,
+  formData: FormData,
+): Promise<Res> {
+  const resp = await fetch(url, { method: "POST", body: formData });
+  if (!resp.ok) {
+    const error = await resp.text();
+    throw new Error(error || `POST ${url} failed with status ${resp.status}`);
+  }
+  return resp.json();
+}
+
+/**
  * Multipart upload of one or more images. Returns the route's full
  * response so callers can either use the public URL (Supabase configured)
  * or fall back to the inline base64 + mediaType.

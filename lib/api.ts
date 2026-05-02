@@ -1,4 +1,4 @@
-import { getJSON, postJSON, transcribe, uploadPhotos } from "./api-base";
+import { getJSON, postJSON, uploadPhotos, transcribe } from "./api-base";
 import type {
   GetPatientsResponse,
   CreatePatientRequest,
@@ -19,6 +19,8 @@ import type {
   GetPassportResponse,
   PassportUpsertRequest,
   PassportUpsertResponse,
+  CreateVisitRequest,
+  CreateVisitResponse,
 } from "./api-types";
 
 export const api = {
@@ -80,6 +82,9 @@ export const api = {
     postJSON<CorrectionRequest, CorrectionResponse>("/api/corrections", req),
   createVisit: (req: {
     patientId: string;
+    /** Optional — convenience for callers that already have it. The
+     *  server only needs patientId, but logging benefits from the name. */
+    patientName?: string;
     rawNotes: string;
     soap: any;
     prescription: any;

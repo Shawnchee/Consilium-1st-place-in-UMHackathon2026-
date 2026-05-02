@@ -14,7 +14,7 @@ import { hasSupabase } from "@/lib/env";
 import { getSupabaseBrowser } from "@/lib/supabase";
 import { buildPayloadFromConsult } from "@/lib/passport-fixtures";
 import type { SessionCaptureResult } from "@/lib/agents/sub-agents/types";
-import type { FollowUp, MetricCardData, Patient } from "@/lib/types";
+import type { FollowUp, FollowUpLevel, MetricCardData, Patient } from "@/lib/types";
 
 interface StoreCtx {
   // data
@@ -72,6 +72,8 @@ interface StoreCtx {
     chatId: string,
     options?: { bodyDraft?: string; aftercare?: string[] },
   ) => Promise<{ passportUrl: string; messageId: number }>;
+  approveClear: (f: FollowUp) => void;
+  changeFollowUpLevel: (f: FollowUp, level: FollowUpLevel) => void;
 }
 
 /** Minimum shape we read off a Realtime `followups` row payload. */
@@ -139,7 +141,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(() => loadFollowups(false), [loadFollowups]);
 
   useEffect(() => {
-    void loadFollowups(false);
+    // Initial mount already has loading=true, so we can load 'silently'
+    // but we defer to avoid the synchronous setState lint error.
+    const t = setTimeout(() => {
+      void loadFollowups(true);
+    }, 0);
+    return () => clearTimeout(t);
   }, [loadFollowups]);
 
   /* ─── Supabase Realtime on `followups` ────────────────────────────────
@@ -285,13 +292,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         chatId: cur.chatId,
         body,
         patientId: cur.patientId,
+        patientName: cur.patient,
       });
-      // Log the doctor's approval after a successful delivery.
+      // Log the doctor's approval/correction after a successful delivery.
+      const isCorrected = body !== cur.draft;
       void api
         .correction({
           feature: "triage",
           followupId: cur.id,
           glmOutput: cur.level,
+          doctorCorrection: isCorrected ? body : undefined,
           approved: true,
         })
         .catch(() => {});
@@ -372,6 +382,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         body,
         aftercare,
         patientId,
+        patientName: patient.name,
         visitId: result.visitId,
       });
 
@@ -380,6 +391,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [patients, flashToast],
   );
+  const approveClear = useCallback((f: FollowUp) => {
+    setFollowups((fs) => fs.filter((x) => x.id !== f.id));
+    setResolvedCount((c) => c + 1);
+    flashToast(`${f.patient} categorized as clear`);
+    
+    void api.correction({
+      feature: "triage",
+      followupId: f.id,
+      glmOutput: "clear",
+      approved: true,
+    }).catch(() => {});
+  }, [flashToast]);
+
+  const changeFollowUpLevel = useCallback((f: FollowUp, level: FollowUpLevel) => {
+    setFollowups((fs) => fs.map((x) => x.id === f.id ? { ...x, level } : x));
+    flashToast(`${f.patient} moved to ${level}`);
+    
+    void api.correction({
+      feature: "triage",
+      followupId: f.id,
+      glmOutput: f.level,
+      doctorCorrection: level,
+      approved: false,
+    }).catch(() => {});
+  }, [flashToast]);
 
   return (
     <Ctx.Provider
@@ -406,6 +442,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         newPatientArrival,
         dismissNewPatientArrival,
         deletePatient,
+        approveClear,
+        changeFollowUpLevel,
       }}
     >
       {children}

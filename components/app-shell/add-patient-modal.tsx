@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button, Icon } from "@/components/atoms";
 import { BORDER_HAIRLINE, C, FONT_MONO, FONT_SERIF, RADIUS, SHADOW_CARD } from "@/lib/tokens";
@@ -9,7 +9,6 @@ import { api } from "@/lib/api";
 
 export function AddPatientModal({ onClose }: { onClose: () => void }) {
   const { refresh, flashToast } = useStore();
-  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -23,15 +22,12 @@ export function AddPatientModal({ onClose }: { onClose: () => void }) {
   const [isSexDropdownOpen, setSexDropdownOpen] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 10);
     const esc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", esc);
     return () => {
-      clearTimeout(t);
       window.removeEventListener("keydown", esc);
-      setMounted(false);
     };
   }, [onClose]);
 

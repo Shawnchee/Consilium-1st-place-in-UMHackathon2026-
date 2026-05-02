@@ -95,6 +95,7 @@ function EscalationCard({
   index: number;
 }) {
   const [hover, setHover] = useState(false);
+  const { changeFollowUpLevel } = useStore();
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -167,10 +168,16 @@ function EscalationCard({
         &ldquo;{f.ownerMessage}&rdquo;
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ fontSize: 12, color: C.muted }}>{f.owner}</div>
         <div style={{ flex: 1 }} />
-        <Button size="sm" variant="ghost" onClick={onReview}>
+        <Button size="sm" variant="ghost" onClick={() => changeFollowUpLevel(f, "monitor")}>
+          Monitor
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => changeFollowUpLevel(f, "clear")}>
+          Recovered
+        </Button>
+        <Button size="sm" variant="primary" onClick={onReview}>
           Review
         </Button>
       </div>
@@ -180,6 +187,7 @@ function EscalationCard({
 
 function MonitorCard({ f, index }: { f: FollowUp; index: number }) {
   const [hover, setHover] = useState(false);
+  const { changeFollowUpLevel } = useStore();
   return (
     <div
       onMouseEnter={() => setHover(true)}
@@ -264,11 +272,14 @@ function MonitorCard({ f, index }: { f: FollowUp; index: number }) {
         {f.recommendation}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ fontSize: 12, color: C.muted }}>{f.owner}</div>
         <div style={{ flex: 1 }} />
-        <Button size="sm" variant="ghost">
-          Confirm
+        <Button size="sm" variant="ghost" onClick={() => changeFollowUpLevel(f, "escalate")}>
+          Escalate
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => changeFollowUpLevel(f, "clear")}>
+          Recovered
         </Button>
       </div>
     </div>
@@ -276,59 +287,93 @@ function MonitorCard({ f, index }: { f: FollowUp; index: number }) {
 }
 
 function ClearCard({ f, index }: { f: FollowUp; index: number }) {
+  const [hover, setHover] = useState(false);
+  const { approveClear, changeFollowUpLevel } = useStore();
+
   return (
     <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         background: C.card,
-        borderTop: `1px solid ${C.borderSoft}`,
-        borderRight: `1px solid ${C.borderSoft}`,
-        borderBottom: `1px solid ${C.borderSoft}`,
+        borderTop: `1px solid ${hover ? C.border : C.borderSoft}`,
+        borderRight: `1px solid ${hover ? C.border : C.borderSoft}`,
+        borderBottom: `1px solid ${hover ? C.border : C.borderSoft}`,
         borderLeft: `2px solid ${C.green}`,
         borderRadius: 12,
-        padding: "18px 22px",
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
+        padding: "20px 22px",
+        minHeight: 100,
+        transform: hover ? "translateY(-1px)" : "translateY(0)",
+        transition: "transform 140ms ease, border-color 160ms ease",
         animation: "fadeUp 440ms ease both",
         animationDelay: `${120 + index * 50}ms`,
       }}
     >
-      <Dot color={C.green} size={8} />
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 10,
+        }}
+      >
+        <Dot color={C.green} size={8} />
         <div
           style={{
             fontFamily: FONT_SERIF,
-            fontSize: 16,
+            fontSize: 17,
             fontWeight: 500,
             color: C.text,
             letterSpacing: -0.2,
           }}
         >
           {f.patient}
-          <span
+        </div>
+        <div style={{ fontSize: 13, color: C.muted }}>
+          · {f.procedure}
+        </div>
+        <div style={{ flex: 1 }} />
+        {f.tsLabel && (
+          <div
             style={{
-              fontFamily: "inherit",
-              fontSize: 13,
-              color: C.muted,
-              fontWeight: 400,
-              marginLeft: 8,
+              fontSize: 11.5,
+              color: C.hint,
+              fontFamily: FONT_MONO,
             }}
           >
-            · {f.procedure}
-          </span>
-        </div>
-        <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>
-          Auto-resolved · {f.owner}
-        </div>
+            {f.tsLabel}
+          </div>
+        )}
       </div>
+
       <div
         style={{
-          fontSize: 11.5,
-          color: C.hint,
-          fontFamily: FONT_MONO,
+          fontSize: 14,
+          fontStyle: "italic",
+          color: C.ink,
+          lineHeight: 1.55,
+          marginBottom: 12,
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
         }}
       >
-        closed
+        &ldquo;{f.ownerMessage}&rdquo;
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ fontSize: 12, color: C.muted }}>Pending Approval · {f.owner}</div>
+        <div style={{ flex: 1 }} />
+        <Button size="sm" variant="ghost" onClick={() => changeFollowUpLevel(f, "escalate")}>
+          Escalate
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => changeFollowUpLevel(f, "monitor")}>
+          Monitor
+        </Button>
+        <Button size="sm" variant="primary" onClick={() => approveClear(f)}>
+          Approve
+        </Button>
       </div>
     </div>
   );
@@ -414,7 +459,7 @@ export default function FollowUpsPage() {
     all: followups.length,
     escalate: escalations.length,
     monitor: monitors.length,
-    clear: resolvedCount, // show doctor-facing total recovered count
+    clear: clears.length, // show doctor-facing pending approvals count
   };
 
   return (
@@ -493,17 +538,19 @@ export default function FollowUpsPage() {
             <SectionHeading
               title="Recovered"
               color={C.green}
-              count={resolvedCount}
+              count={clears.length}
             />
           )}
           {filter === "clear" && clears.length === 0 && resolvedCount === 0 && (
             <EmptyState filter="clear" />
           )}
-          {filter === "clear" && (
-            <RecoveredSummary resolvedCount={resolvedCount} />
+          {filter === "clear" && resolvedCount > 0 && (
+            <div style={{ marginBottom: clears.length > 0 ? 16 : 0 }}>
+              <RecoveredSummary resolvedCount={resolvedCount} />
+            </div>
           )}
           {clears.length > 0 && (
-            <div style={{ display: "grid", gap: 12, marginTop: filter === "clear" ? 16 : 0 }}>
+            <div style={{ display: "grid", gap: 12 }}>
               {clears.map((f, i) => (
                 <ClearCard key={f.id} f={f} index={i} />
               ))}
@@ -595,10 +642,10 @@ function RecoveredSummary({ resolvedCount }: { resolvedCount: number }) {
             letterSpacing: -0.4,
           }}
         >
-          {resolvedCount} cases auto-resolved this week
+          {resolvedCount} cases approved this week
         </div>
         <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>
-          All-clear replies closed automatically · no action needed
+          All-clear replies closed and verified · no action needed
         </div>
       </div>
     </div>

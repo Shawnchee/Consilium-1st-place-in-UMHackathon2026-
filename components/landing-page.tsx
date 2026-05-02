@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Button, Card, Dot, Icon, Pill } from "@/components/atoms";
+import { Button, Dot, Icon, Pill } from "@/components/atoms";
 import { HeroDog, MousePosition } from "@/components/dogs";
 import BlurWord from "@/components/react-bits/BlurWord";
 import CountUp from "@/components/react-bits/CountUp";
@@ -35,8 +35,8 @@ function useReveal<T extends HTMLElement>(threshold = 0.12) {
       window.matchMedia &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
-      setShown(true);
-      return;
+      const t = setTimeout(() => setShown(true), 0);
+      return () => clearTimeout(t);
     }
     const el = ref.current;
     if (!el) return;
