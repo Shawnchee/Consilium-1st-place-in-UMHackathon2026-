@@ -20,6 +20,22 @@ import { buildIdentityPayload } from "@/lib/passport-fixtures";
 import type { PassportPayload } from "@/lib/types";
 
 /* ------------------------------------------------------------------
+   useIsMobile — flips at the 768px viewport breakpoint. Defaults to
+   false during SSR so desktop renders correctly on first paint.
+   ------------------------------------------------------------------ */
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+/* ------------------------------------------------------------------
    Identity row — two-column labeled list (mono label small caps +
    value in regular / serif). Hairline bottom divider, no wash.
    ------------------------------------------------------------------ */
@@ -34,12 +50,13 @@ function IdentityRow({
   mono?: boolean;
   last?: boolean;
 }) {
+  const isMobile = useIsMobile();
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "160px 1fr",
-        gap: 16,
+        gridTemplateColumns: isMobile ? "1fr" : "160px 1fr",
+        gap: isMobile ? 4 : 16,
         padding: "10px 0",
         borderBottom: last ? "none" : `1px solid ${C.borderSoft}`,
       }}
@@ -51,7 +68,7 @@ function IdentityRow({
           letterSpacing: 1.4,
           textTransform: "uppercase",
           color: C.muted,
-          paddingTop: 3,
+          paddingTop: isMobile ? 0 : 3,
         }}
       >
         {label}
@@ -63,6 +80,7 @@ function IdentityRow({
           fontFamily: mono ? FONT_MONO : "inherit",
           fontWeight: mono ? 500 : 400,
           lineHeight: 1.45,
+          wordBreak: "break-word",
         }}
       >
         {value}
@@ -241,6 +259,7 @@ function VisitRow({
 }
 
 function PassportContent() {
+  const isMobile = useIsMobile();
   const params = useSearchParams();
   const pid = params.get("pid");
   const { flashToast, patients } = useStore();
@@ -299,13 +318,19 @@ function PassportContent() {
   const visits = payload.visits;
 
   return (
-    <div style={{ padding: "0 32px 100px", maxWidth: 1480, margin: "0 auto" }}>
+    <div
+      style={{
+        padding: isMobile ? "0 16px 80px" : "0 32px 100px",
+        maxWidth: 1480,
+        margin: "0 auto",
+      }}
+    >
       <PageHeader
         eyebrow="Pet health passport"
         title={`${p.name}'s health passport`}
         sub="Clinic-side preview of the owner's shareable record. Any vet can open it without login."
         right={
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Link href="/dashboard">
               <Button variant="ghost" size="sm" icon={Icon.back(14)}>
                 Back
@@ -330,6 +355,7 @@ function PassportContent() {
         style={{
           display: "flex",
           alignItems: "center",
+          flexWrap: "wrap",
           gap: 10,
           marginTop: -12,
           marginBottom: 24,
@@ -359,6 +385,8 @@ function PassportContent() {
             padding: "2px 8px",
             border: BORDER_HAIRLINE,
             borderRadius: 4,
+            wordBreak: "break-all",
+            maxWidth: "100%",
           }}
         >
           {displayUrl}
@@ -373,8 +401,8 @@ function PassportContent() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 320px",
-          gap: 32,
+          gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 320px",
+          gap: isMobile ? 20 : 32,
           alignItems: "start",
         }}
       >
@@ -392,7 +420,7 @@ function PassportContent() {
           {/* Booklet header strip — no wash, hairline divider */}
           <div
             style={{
-              padding: "40px 56px 28px",
+              padding: isMobile ? "28px 20px 20px" : "40px 56px 28px",
               borderBottom: `1px solid ${C.borderSoft}`,
             }}
           >
@@ -400,13 +428,14 @@ function PassportContent() {
               style={{
                 display: "flex",
                 alignItems: "baseline",
-                gap: 12,
+                gap: isMobile ? 10 : 12,
                 marginBottom: 10,
+                flexWrap: "wrap",
               }}
             >
               <span
                 style={{
-                  fontSize: 30,
+                  fontSize: isMobile ? 24 : 30,
                   lineHeight: 1,
                   filter: "grayscale(0.15)",
                 }}
@@ -418,11 +447,12 @@ function PassportContent() {
                 style={{
                   margin: 0,
                   fontFamily: FONT_SERIF,
-                  fontSize: 40,
+                  fontSize: isMobile ? 26 : 40,
                   fontWeight: 600,
-                  letterSpacing: -0.8,
+                  letterSpacing: isMobile ? -0.4 : -0.8,
                   color: C.text,
-                  lineHeight: 1.05,
+                  lineHeight: 1.1,
+                  wordBreak: "break-word",
                 }}
               >
                 {p.name}&apos;s Health Passport
@@ -441,7 +471,7 @@ function PassportContent() {
           </div>
 
           {/* Body — generous margins, editorial spacing */}
-          <div style={{ padding: "14px 56px 48px" }}>
+          <div style={{ padding: isMobile ? "8px 20px 32px" : "14px 56px 48px" }}>
             {/* Pet identity block */}
             <BookletSection title="Pet identity">
               <div style={{ padding: "4px 0" }}>
@@ -491,9 +521,11 @@ function PassportContent() {
               {vaccinations.length === 0 ? (
                 <EmptyHint>No vaccinations on record yet.</EmptyHint>
               ) : (
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", margin: "0 -4px" }}>
               <table
                 style={{
                   width: "100%",
+                  minWidth: isMobile ? 480 : "auto",
                   borderCollapse: "collapse",
                   fontSize: 13,
                 }}
@@ -578,6 +610,7 @@ function PassportContent() {
                   ))}
                 </tbody>
               </table>
+              </div>
               )}
             </BookletSection>
 
@@ -599,8 +632,8 @@ function PassportContent() {
                       key={`${med.drug}-${idx}`}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr auto",
-                        gap: 16,
+                        gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
+                        gap: isMobile ? 8 : 16,
                         padding: "10px 0",
                         borderTop:
                           idx === 0 ? "none" : `1px solid ${C.borderSoft}`,
@@ -629,7 +662,7 @@ function PassportContent() {
                         </div>
                       </div>
                       {(med.progressLabel || med.endsLabel) && (
-                        <div style={{ textAlign: "right", minWidth: 140 }}>
+                        <div style={{ textAlign: isMobile ? "left" : "right", minWidth: isMobile ? 0 : 140 }}>
                           {med.progressLabel && (
                             <div
                               style={{
@@ -783,18 +816,22 @@ function PassportContent() {
           {/* Footer colophon — mono */}
           <div
             style={{
-              padding: "16px 56px",
+              padding: isMobile ? "14px 20px" : "16px 56px",
               borderTop: `1px solid ${C.borderSoft}`,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
               fontSize: 11,
               fontFamily: FONT_MONO,
               color: C.hint,
               letterSpacing: 0.2,
             }}
           >
-            <span>consilium · passport {payload.shareUuid}</span>
+            <span style={{ wordBreak: "break-all" }}>
+              consilium · passport {payload.shareUuid}
+            </span>
             <span>page 1 of 1</span>
           </div>
         </Card>
@@ -810,7 +847,7 @@ function PassportContent() {
           }}
         >
           {/* QR card */}
-          <Card style={{ padding: 24 }}>
+          <Card style={{ padding: isMobile ? 20 : 24 }}>
             <SectionTitle title="Share passport" />
             <div
               style={{
@@ -819,7 +856,7 @@ function PassportContent() {
                 padding: "4px 0 18px",
               }}
             >
-              <PassportQR value={absolutePassportUrl} size={220} />
+              <PassportQR value={absolutePassportUrl} size={isMobile ? 200 : 220} />
             </div>
             <div
               style={{
@@ -851,7 +888,7 @@ function PassportContent() {
           </Card>
 
           {/* Recent visits timeline */}
-          <Card style={{ padding: 24 }}>
+          <Card style={{ padding: isMobile ? 20 : 24 }}>
             <SectionTitle title="Recent visits" count={visits.length} />
             <div>
               {visits.map((v, i) => (
@@ -867,7 +904,7 @@ function PassportContent() {
           </Card>
 
           {/* Why this matters — quiet editorial block */}
-          <Card style={{ padding: 24 }}>
+          <Card style={{ padding: isMobile ? 20 : 24 }}>
             <div
               style={{
                 fontSize: 10.5,
