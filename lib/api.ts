@@ -16,6 +16,9 @@ import type {
   CorrectionResponse,
   TelegramSendRequest,
   TelegramSendResponse,
+  GetPassportResponse,
+  PassportUpsertRequest,
+  PassportUpsertResponse,
 } from "./api-types";
 
 export const api = {
@@ -48,6 +51,15 @@ export const api = {
   telegramSend: (req: TelegramSendRequest) =>
     postJSON<TelegramSendRequest, TelegramSendResponse>(
       "/api/consult/telegram-send",
+      req,
+    ),
+  getPassport: (patientId: string) =>
+    getJSON<GetPassportResponse>(
+      `/api/passports/${encodeURIComponent(patientId)}`,
+    ),
+  upsertPassport: (req: PassportUpsertRequest) =>
+    postJSON<PassportUpsertRequest, PassportUpsertResponse>(
+      "/api/passports",
       req,
     ),
 
