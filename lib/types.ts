@@ -20,6 +20,8 @@ export interface Patient {
   sex: string;
   owner: string;
   ownerPhone: string;
+  /** Telegram chat ID linked to this patient (numeric or @username). */
+  ownerTelegram?: string | null;
   tag: string;
   tagColor: TagColor;
   reason: string;

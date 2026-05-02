@@ -64,6 +64,7 @@ export function rowToPatient(r: PatientRow): Patient {
     sex: r.sex ?? "",
     owner: r.owner_name ?? "",
     ownerPhone: r.owner_phone ?? "",
+    ownerTelegram: r.owner_telegram ?? null,
     time: display?.time ?? "—",
     tag: display?.tag ?? "Scheduled",
     tagColor: (display?.tagColor as TagColor) ?? "green",

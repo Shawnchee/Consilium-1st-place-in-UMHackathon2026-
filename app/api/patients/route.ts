@@ -99,6 +99,61 @@ export async function POST(req: Request) {
 }
 
 /**
+ * PATCH /api/patients?id=<uuid>
+ *
+ * Body: { ownerTelegram?: string | null }
+ *
+ * Doctor-side explicit update of owner_telegram. The /api/consult/telegram-send
+ * route only back-writes on first successful send and only when the column
+ * is NULL (security gate); this PATCH lets the doctor set or change it
+ * directly from the consult page.
+ */
+export async function PATCH(req: Request) {
+  try {
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) throw new ApiError(400, "id required");
+    const body = (await req.json().catch(() => ({}))) as {
+      ownerTelegram?: string | null;
+    };
+    if (
+      body.ownerTelegram !== null &&
+      body.ownerTelegram !== undefined &&
+      typeof body.ownerTelegram !== "string"
+    ) {
+      throw new ApiError(400, "ownerTelegram must be string or null");
+    }
+    const trimmed =
+      typeof body.ownerTelegram === "string"
+        ? body.ownerTelegram.trim()
+        : body.ownerTelegram;
+    if (typeof trimmed === "string" && trimmed) {
+      const numeric = /^-?\d+$/.test(trimmed);
+      const username = /^@[a-zA-Z0-9_]{4,32}$/.test(trimmed);
+      if (!numeric && !username)
+        throw new ApiError(
+          400,
+          "ownerTelegram must be numeric chat id or @username",
+        );
+    }
+    if (!hasSupabase()) {
+      throw new ApiError(503, "Supabase required");
+    }
+    const db = getSupabaseServer();
+    const { data, error } = await db
+      .from("patients")
+      .update({ owner_telegram: trimmed || null })
+      .eq("id", id)
+      .select(PATIENT_COLS)
+      .maybeSingle<PatientRow>();
+    if (error) throw new ApiError(500, error.message);
+    if (!data) throw new ApiError(404, `patient ${id} not found`);
+    return json<GetPatientResponse>({ patient: rowToPatient(data) });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+/**
  * DELETE /api/patients?id=<uuid>
  *
  * Removes a patient row. Cascades through visits, followups, and the

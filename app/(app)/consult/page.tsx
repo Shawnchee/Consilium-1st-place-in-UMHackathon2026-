@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, Icon, Pill } from "@/components/atoms";
 import { PageHeader, PetAvatar } from "@/components/app-shell/page-header";
@@ -240,6 +240,19 @@ function PrescriptionCard({
         </>
       }
     >
+      {rx.length === 0 && (
+        <div
+          style={{
+            padding: "16px 0 4px",
+            fontSize: 13,
+            color: C.muted,
+            fontStyle: "italic",
+            textAlign: "center",
+          }}
+        >
+          No medications prescribed for this visit.
+        </div>
+      )}
       {rx.map((r, i) => (
         <div
           key={i}
@@ -732,10 +745,148 @@ function FieldHeader({
   );
 }
 
+function TelegramLinkRow({ patient }: { patient: Patient }) {
+  const { flashToast, refresh } = useStore();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(patient.ownerTelegram ?? "");
+  const [saving, setSaving] = useState(false);
+  const linked = !!patient.ownerTelegram;
+
+  // When the underlying patient changes (e.g. dashboard refresh), reset
+  // the local draft so the field reflects the new server-side value.
+  useEffect(() => {
+    setDraft(patient.ownerTelegram ?? "");
+    setEditing(false);
+  }, [patient.id, patient.ownerTelegram]);
+
+  async function save() {
+    const trimmed = draft.trim();
+    setSaving(true);
+    try {
+      await api.setPatientTelegram(patient.id, trimmed || null);
+      flashToast(
+        trimmed
+          ? `Telegram linked · ${patient.name}`
+          : `Telegram unlinked · ${patient.name}`,
+      );
+      setEditing(false);
+      void refresh();
+    } catch (err) {
+      flashToast(
+        err instanceof Error ? err.message : "Failed to update Telegram link",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        borderTop: `1px solid ${C.border}`,
+        padding: "10px 20px",
+        background: linked ? "#FFFFFF" : C.bgAlt,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        fontSize: 12.5,
+        color: C.muted,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: 1.4,
+          textTransform: "uppercase",
+          color: linked ? C.brand : C.hint,
+        }}
+      >
+        Owner Telegram
+      </span>
+      <span style={{ color: C.border }}>·</span>
+      {editing ? (
+        <>
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={saving}
+            autoFocus
+            placeholder="123456789 or @username"
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 12.5,
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: `1px solid ${C.border}`,
+              outline: "none",
+              minWidth: 220,
+              background: "#fff",
+            }}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={save}
+            style={saving ? { opacity: 0.5, pointerEvents: "none" } : undefined}
+          >
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setDraft(patient.ownerTelegram ?? "");
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <>
+          <span
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 12.5,
+              color: linked ? C.text : C.hint,
+              fontWeight: 500,
+            }}
+          >
+            {linked ? patient.ownerTelegram : "Not linked yet"}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: C.brand,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: 0,
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+            }}
+          >
+            {linked ? "Edit" : "Link Telegram"}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConsultContent() {
   const params = useSearchParams();
+  const router = useRouter();
   const pid = params.get("pid");
   const { flashToast, patients } = useStore();
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
   // Fetch-on-demand for patients arriving from a Realtime push: when the
   // doctor clicks "Open consult" on a new-patient banner, the local
@@ -1325,6 +1476,7 @@ function ConsultContent() {
             {patient.brief.probe}
           </span>
         </div>
+        <TelegramLinkRow patient={patient} />
       </Card>
 
       {/* Pipeline visibility toggle + (when on) live agent execution view.
@@ -1669,9 +1821,16 @@ function ConsultContent() {
               <Button
                 variant="primary"
                 size="md"
-                style={{ background: "#10b93aff", borderColor: "#10b981" }}
+                style={{
+                  background:
+                    saveState === "saved" ? "#10b981" : "#10b93aff",
+                  borderColor: "#10b981",
+                  opacity: saveState === "saving" ? 0.6 : 1,
+                  pointerEvents: saveState === "idle" ? "auto" : "none",
+                }}
                 icon={Icon.check(14)}
                 onClick={async () => {
+                  setSaveState("saving");
                   try {
                     await api.createVisit({
                       patientId: patient.id,
@@ -1681,13 +1840,22 @@ function ConsultContent() {
                       billing: output.billing,
                       todos: output.todos,
                     });
-                    flashToast("Visit saved successfully!");
+                    setSaveState("saved");
+                    flashToast(
+                      `Consultation done · ${patient.name} saved · returning to dashboard`,
+                    );
+                    setTimeout(() => router.push("/dashboard"), 1400);
                   } catch (err) {
+                    setSaveState("idle");
                     flashToast("Failed to save visit");
                   }
                 }}
               >
-                Finish & Save Visit
+                {saveState === "saved"
+                  ? "Done · redirecting…"
+                  : saveState === "saving"
+                    ? "Saving…"
+                    : "Finish & Save Visit"}
               </Button>
             )}
           </div>
@@ -1900,7 +2068,11 @@ function ConsultContent() {
           <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>
             Review the draft, confirm the chat ID, deliver via Telegram. Saves the chat ID to the patient record on success.
           </div>
-          <SendPanel result={stream.result} patientId={patient.id} />
+          <SendPanel
+            result={stream.result}
+            patientId={patient.id}
+            initialChatId={patient.ownerTelegram ?? undefined}
+          />
         </div>
       )}
     </div>

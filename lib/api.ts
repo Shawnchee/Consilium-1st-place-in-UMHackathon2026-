@@ -27,6 +27,18 @@ export const api = {
     postJSON<CreatePatientRequest, CreatePatientResponse>("/api/patients", req),
   getPatient: (id: string) =>
     getJSON<GetPatientResponse>(`/api/patients?id=${encodeURIComponent(id)}`),
+  setPatientTelegram: async (id: string, ownerTelegram: string | null) => {
+    const resp = await fetch(`/api/patients?id=${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ownerTelegram }),
+    });
+    if (!resp.ok) {
+      const error = await resp.text();
+      throw new Error(error || `update failed (${resp.status})`);
+    }
+    return resp.json() as Promise<GetPatientResponse>;
+  },
   deletePatient: async (id: string) => {
     const resp = await fetch(`/api/patients?id=${encodeURIComponent(id)}`, {
       method: "DELETE",
