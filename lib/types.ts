@@ -137,3 +137,61 @@ export interface CorrectionRow {
   fix: string;
   who: string;
 }
+
+// ─── Pet passport ──────────────────────────────────────────────────────────
+export type VaxStatus = "ok" | "due" | "overdue";
+
+export interface PassportVaccination {
+  name: string;
+  last: string;
+  next: string;
+  status: VaxStatus;
+}
+
+export interface PassportVisit {
+  date: string;
+  reason: string;
+  outcome: string;
+}
+
+export interface PassportActiveMed {
+  drug: string;
+  dose: string;
+  /** "Day 7 of 7" style label rendered on the right. */
+  progressLabel?: string;
+  /** 0..1 progress bar value. */
+  progress?: number;
+  endsLabel?: string;
+}
+
+export interface PassportLastDiagnosis {
+  title: string;
+  detail: string;
+  bylineDate: string;
+  bylineDoctor: string;
+}
+
+export interface PassportIdentity {
+  name: string;
+  species: string;
+  breed: string;
+  age: string;
+  sex: string;
+  owner: string;
+  ownerPhone: string;
+  microchipId?: string;
+}
+
+export interface PassportPayload {
+  patientId: string;
+  shareUuid: string;
+  /** Display string e.g. "01 Dec 2025" — generated server-side at upsert time. */
+  generatedAt: string;
+  identity: PassportIdentity;
+  vaccinations: PassportVaccination[];
+  visits: PassportVisit[];
+  activeMeds: PassportActiveMed[];
+  lastDiagnosis?: PassportLastDiagnosis;
+  /** Free-form italic blockquote shown to the next vet. */
+  notesForNextVet?: string;
+}

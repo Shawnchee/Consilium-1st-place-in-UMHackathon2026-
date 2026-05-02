@@ -13,6 +13,7 @@ import type {
   DiagnosisRow,
   CorrectionRow,
   Differential,
+  PassportPayload,
 } from "./types";
 
 // ─── /api/patients ──────────────────────────────────────────────────────────
@@ -231,6 +232,60 @@ export function parseTelegramSendRequest(raw: unknown): TelegramSendRequest {
     aftercare,
     patientId: r.patientId,
     visitId: typeof r.visitId === "string" ? r.visitId : undefined,
+  };
+}
+
+// ─── /api/passports ─────────────────────────────────────────────────────────
+export interface GetPassportResponse {
+  payload: PassportPayload;
+  source: "supabase" | "memory" | "fixture";
+}
+
+export interface PassportUpsertRequest {
+  patientId: string;
+  payload: PassportPayload;
+}
+
+export interface PassportUpsertResponse {
+  ok: true;
+  shareUuid: string;
+  /** Path-relative passport URL (e.g. "/passport?pid=abc"). Caller composes the absolute URL. */
+  url: string;
+  source: "supabase" | "memory";
+}
+
+const MAX_PASSPORT_PAYLOAD_BYTES = 64_000;
+
+export function parsePassportUpsertRequest(
+  raw: unknown,
+): PassportUpsertRequest {
+  const r = raw as Partial<PassportUpsertRequest>;
+  if (!r || typeof r !== "object") throw new ApiError(400, "body must be object");
+  if (typeof r.patientId !== "string" || !r.patientId.trim())
+    throw new ApiError(400, "patientId required");
+  if (r.patientId.length > 100)
+    throw new ApiError(400, "patientId too long");
+  if (!r.payload || typeof r.payload !== "object")
+    throw new ApiError(400, "payload required");
+
+  // Quick size guard so a runaway client can't write a giant JSON blob.
+  const size = JSON.stringify(r.payload).length;
+  if (size > MAX_PASSPORT_PAYLOAD_BYTES)
+    throw new ApiError(413, `payload exceeds ${MAX_PASSPORT_PAYLOAD_BYTES} bytes`);
+
+  const p = r.payload as Partial<PassportPayload>;
+  if (!p.identity || typeof p.identity !== "object")
+    throw new ApiError(400, "payload.identity required");
+  if (typeof (p.identity as { name?: unknown }).name !== "string")
+    throw new ApiError(400, "payload.identity.name required");
+  if (typeof p.shareUuid !== "string" || !p.shareUuid)
+    throw new ApiError(400, "payload.shareUuid required");
+  if (!Array.isArray(p.vaccinations) || !Array.isArray(p.visits) || !Array.isArray(p.activeMeds))
+    throw new ApiError(400, "payload arrays required");
+
+  return {
+    patientId: r.patientId,
+    payload: r.payload as PassportPayload,
   };
 }
 
