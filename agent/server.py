@@ -43,7 +43,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
 
 
-app = FastAPI(title="Consilium triage agent", lifespan=lifespan)
+# On Vercel, the app is mounted under /api/agent via vercel.json rewrites.
+# Setting root_path ensures FastAPI's internal routing and docs match the external URL.
+app = FastAPI(
+    title="Consilium triage agent", 
+    lifespan=lifespan,
+    root_path="/api/agent" if os.getenv("VERCEL") else ""
+)
 
 
 @app.get("/health")
