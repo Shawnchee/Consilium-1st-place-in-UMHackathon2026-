@@ -20,6 +20,7 @@ import { C, FONT_MONO, FONT_SERIF, SHADOW_CARD } from "@/lib/tokens";
 import type {
   BillingItem,
   ConsultOutput,
+  Patient,
   PrescriptionItem,
   SoapNote,
   TodoItem,
@@ -733,6 +734,411 @@ function ExampleDropdown({ onPick }: { onPick: (text: string, label: string) => 
         </div>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Medication schedule
+// ─────────────────────────────────────────────────────────────────────
+type MedFrequency =
+  | "once_daily"
+  | "twice_daily"
+  | "every_x_hours"
+  | "weekly"
+  | "custom";
+
+type MedSchedulePayload = {
+  pet_id: string;
+  owner_id: string;
+  frequency: MedFrequency;
+  interval_hours?: number;
+  days_of_week?: number[];
+  times: string[];
+  start_date: string;
+  end_date: string;
+  meal_relation: "before_meal" | "after_meal" | "none";
+  notes: string;
+};
+
+const MED_PRESETS: {
+  id: "once_daily" | "twice_daily" | "every_8h" | "weekly" | "custom";
+  label: string;
+  hint: string;
+}[] = [
+  { id: "once_daily",  label: "Once daily",    hint: "1× / day"   },
+  { id: "twice_daily", label: "Twice daily",   hint: "2× / day"   },
+  { id: "every_8h",   label: "Every 8 hours", hint: "3× / day"   },
+  { id: "weekly",     label: "Once weekly",   hint: "1× / week"  },
+  { id: "custom",     label: "Custom",        hint: "fully manual" },
+];
+
+const MED_DURATION_DAYS = [3, 5, 7, 14];
+const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addDaysIso(base: string, days: number): string {
+  const d = new Date(`${base}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function ChipBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "6px 12px",
+        borderRadius: 999,
+        border: `1px solid ${active ? C.text : C.border}`,
+        background: active ? C.text : "transparent",
+        color: active ? "#fff" : C.text,
+        fontSize: 12.5,
+        fontWeight: 600,
+        cursor: "pointer",
+        fontFamily: "inherit",
+        transition: "background 130ms ease, border-color 130ms ease",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MedicationScheduleCard({
+  patient,
+  onSubmit,
+}: {
+  patient: Patient;
+  onSubmit: (payload: MedSchedulePayload) => void;
+}) {
+  const [presetId, setPresetId] =
+    useState<(typeof MED_PRESETS)[number]["id"]>("once_daily");
+  const [startDate, setStartDate] = useState<string>(todayIso());
+  const [durKind, setDurKind] = useState<"days" | "custom">("days");
+  const [durDays, setDurDays] = useState<number>(7);
+  const [endDate, setEndDate] = useState<string>(addDaysIso(todayIso(), 6));
+  const [times, setTimes] = useState<string[]>(["08:00"]);
+  const [intervalHours, setIntervalHours] = useState<number>(8);
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1]);
+  const [mealRelation, setMealRelation] =
+    useState<MedSchedulePayload["meal_relation"]>("none");
+  const [notes, setNotes] = useState("");
+
+  const applyPreset = (id: (typeof MED_PRESETS)[number]["id"]) => {
+    setPresetId(id);
+    if (id === "once_daily")  setTimes(["08:00"]);
+    if (id === "twice_daily") setTimes(["08:00", "20:00"]);
+    if (id === "every_8h")  { setTimes(["00:00", "08:00", "16:00"]); setIntervalHours(8); }
+    if (id === "weekly")    { setTimes(["09:00"]); if (daysOfWeek.length === 0) setDaysOfWeek([1]); }
+  };
+
+  const effectiveEnd = useMemo(() => {
+    if (durKind === "custom") return endDate;
+    return addDaysIso(startDate, Math.max(0, durDays - 1));
+  }, [durKind, durDays, startDate, endDate]);
+
+  const errors = useMemo(() => {
+    const e: string[] = [];
+    if (times.length === 0) e.push("Add at least one time slot.");
+    if (times.some((t) => !/^\d{2}:\d{2}$/.test(t))) e.push("Times must be in HH:MM format.");
+    if ((presetId === "every_8h" || presetId === "custom") && (intervalHours <= 0 || intervalHours > 24))
+      e.push("Interval hours must be between 1 and 24.");
+    if (presetId === "weekly" && daysOfWeek.length === 0) e.push("Pick at least one weekday.");
+    if (!startDate) e.push("Start date required.");
+    if (effectiveEnd && effectiveEnd < startDate) e.push("End date cannot be before start date.");
+    if (durKind === "custom" && !endDate) e.push("Custom end date required.");
+    if (new Set(times).size !== times.length) e.push("Duplicate time slots.");
+    return e;
+  }, [times, presetId, intervalHours, daysOfWeek, startDate, effectiveEnd, durKind, endDate]);
+
+  const valid = errors.length === 0;
+  const sortedTimes = useMemo(() => [...times].sort(), [times]);
+
+  const previewLine = useMemo(() => {
+    const list =
+      sortedTimes.length === 0 ? "(no times set)" :
+      sortedTimes.length === 1 ? sortedTimes[0] :
+      sortedTimes.slice(0, -1).join(", ") + " and " + sortedTimes.at(-1);
+    const dowText = presetId === "weekly"
+      ? ` on ${[...daysOfWeek].sort().map((d) => DOW_LABELS[d]).join(", ") || "—"}`
+      : "";
+    const meal =
+      mealRelation === "before_meal" ? " (before meal)" :
+      mealRelation === "after_meal"  ? " (after meal)"  : "";
+    return `Reminders will be sent at ${list}${dowText} from ${startDate || "—"} to ${effectiveEnd || "—"}${meal}.`;
+  }, [sortedTimes, daysOfWeek, presetId, mealRelation, startDate, effectiveEnd]);
+
+  const reminderCount = useMemo(() => {
+    if (!startDate || !effectiveEnd || times.length === 0) return 0;
+    const a = new Date(`${startDate}T00:00:00`);
+    const b = new Date(`${effectiveEnd}T00:00:00`);
+    if (b < a) return 0;
+    const totalDays = Math.floor((b.getTime() - a.getTime()) / 86_400_000) + 1;
+    if (presetId === "weekly") {
+      let count = 0;
+      for (let i = 0; i < totalDays; i++) {
+        const day = new Date(a); day.setDate(a.getDate() + i);
+        if (daysOfWeek.includes(day.getDay())) count += times.length;
+      }
+      return count;
+    }
+    return totalDays * times.length;
+  }, [startDate, effectiveEnd, times, presetId, daysOfWeek]);
+
+  const updateTime = (i: number, v: string) =>
+    setTimes((p) => p.map((t, idx) => (idx === i ? v : t)));
+  const removeTime = (i: number) =>
+    setTimes((p) => p.filter((_, idx) => idx !== i));
+  const addTime    = () => setTimes((p) => [...p, "12:00"]);
+  const toggleDow  = (d: number) =>
+    setDaysOfWeek((p) => p.includes(d) ? p.filter((x) => x !== d) : [...p, d]);
+
+  const handleSubmit = () => {
+    if (!valid) return;
+    const payload: MedSchedulePayload = {
+      pet_id:   patient.id,
+      owner_id: patient.owner,
+      frequency: presetId === "every_8h" ? "every_x_hours" : (presetId as MedFrequency),
+      ...(presetId === "every_8h" || presetId === "custom" ? { interval_hours: intervalHours } : {}),
+      ...(presetId === "weekly"   || presetId === "custom" ? { days_of_week: [...daysOfWeek].sort() } : {}),
+      times: sortedTimes,
+      start_date:    startDate,
+      end_date:      effectiveEnd,
+      meal_relation: mealRelation,
+      notes:         notes.trim(),
+    };
+    onSubmit(payload);
+  };
+
+  const lbl: React.CSSProperties = {
+    fontSize: 10, fontWeight: 700, letterSpacing: 1.3,
+    textTransform: "uppercase", color: C.hint, marginBottom: 8,
+  };
+
+  const inp: React.CSSProperties = {
+    border: `1px solid ${C.border}`, borderRadius: 8,
+    padding: "8px 10px", background: C.card, color: C.text,
+    fontFamily: "inherit", fontSize: 13, outline: "none",
+  };
+
+  return (
+    <OutputCardShell
+      title="Medication schedule"
+      meta={reminderCount > 0 ? `${reminderCount} reminder${reminderCount === 1 ? "" : "s"}` : "Not scheduled"}
+      footer={
+        <>
+          <div style={{ flex: 1, fontSize: 11.5, color: C.muted }}>
+            {valid ? "Ready to schedule." : `${errors.length} issue${errors.length === 1 ? "" : "s"} to resolve`}
+          </div>
+          <Button variant="ghost" size="sm" icon={Icon.check(13)} onClick={handleSubmit} disabled={!valid}>
+            Save schedule
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: "grid", gap: 20 }}>
+
+        {/* A — Quick preset */}
+        <div>
+          <div style={lbl}>Quick preset</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {MED_PRESETS.map((p) => (
+              <ChipBtn key={p.id} active={presetId === p.id} onClick={() => applyPreset(p.id)}>
+                {p.label}
+                <span style={{ marginLeft: 6, fontSize: 10.5, opacity: 0.65, fontWeight: 500 }}>
+                  {p.hint}
+                </span>
+              </ChipBtn>
+            ))}
+          </div>
+        </div>
+
+        {/* B — Configuration */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+
+          {/* Left: start + duration */}
+          <div style={{ display: "grid", gap: 16 }}>
+            <div>
+              <div style={lbl}>Start date</div>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                style={{ ...inp, width: "100%" }}
+              />
+            </div>
+            <div>
+              <div style={lbl}>Duration</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                {MED_DURATION_DAYS.map((d) => (
+                  <ChipBtn
+                    key={d}
+                    active={durKind === "days" && durDays === d}
+                    onClick={() => { setDurKind("days"); setDurDays(d); }}
+                  >
+                    {d} days
+                  </ChipBtn>
+                ))}
+                <ChipBtn active={durKind === "custom"} onClick={() => setDurKind("custom")}>
+                  Custom
+                </ChipBtn>
+              </div>
+              {durKind === "custom" && (
+                <input
+                  type="date"
+                  value={endDate}
+                  min={startDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  style={{ ...inp, width: "100%" }}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Right: times + frequency extras */}
+          <div style={{ display: "grid", gap: 16 }}>
+            <div>
+              <div style={{ ...lbl, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>Times</span>
+                <button
+                  type="button"
+                  onClick={addTime}
+                  style={{
+                    background: "transparent", border: "none",
+                    color: C.text, fontSize: 11, fontWeight: 700,
+                    letterSpacing: 1.1, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  + Add time
+                </button>
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {times.length === 0 && (
+                  <div style={{ fontSize: 12.5, color: C.muted }}>No times added yet.</div>
+                )}
+                {times.map((t, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="time"
+                      value={t}
+                      onChange={(e) => updateTime(i, e.target.value)}
+                      style={{ ...inp, fontFamily: FONT_MONO }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeTime(i)}
+                      style={{
+                        background: "transparent", border: `1px solid ${C.border}`,
+                        borderRadius: 6, padding: "6px 10px",
+                        fontSize: 12, color: C.muted, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {(presetId === "every_8h" || presetId === "custom") && (
+              <div>
+                <div style={lbl}>Every X hours</div>
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  value={intervalHours}
+                  onChange={(e) => setIntervalHours(Number(e.target.value) || 0)}
+                  style={{ ...inp, width: 110 }}
+                />
+              </div>
+            )}
+
+            {(presetId === "weekly" || presetId === "custom") && (
+              <div>
+                <div style={lbl}>Weekdays</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {DOW_LABELS.map((label, idx) => (
+                    <ChipBtn key={label} active={daysOfWeek.includes(idx)} onClick={() => toggleDow(idx)}>
+                      {label}
+                    </ChipBtn>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Meal relation */}
+        <div>
+          <div style={lbl}>Meal relation</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {([ { id: "before_meal", label: "Before meal" }, { id: "after_meal", label: "After meal" }, { id: "none", label: "No preference" } ] as const).map((m) => (
+              <ChipBtn key={m.id} active={mealRelation === m.id} onClick={() => setMealRelation(m.id)}>
+                {m.label}
+              </ChipBtn>
+            ))}
+          </div>
+        </div>
+
+        {/* Notes — left column */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <div>
+            <div style={lbl}>Notes (not used for automation)</div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="e.g. Give with small treat to ease swallowing."
+              style={{ ...inp, width: "100%", resize: "vertical", minHeight: 64, fontFamily: "inherit" }}
+            />
+            <div style={{ fontSize: 11, color: C.hint, marginTop: 5 }}>Owner: {patient.owner}</div>
+          </div>
+        </div>
+
+        {/* C — Live preview */}
+        <div style={{ borderTop: `1px solid ${C.borderSoft}`, paddingTop: 14 }}>
+          <div style={lbl}>Live preview</div>
+          <div
+            style={{
+              fontSize: 13.5, color: C.text, lineHeight: 1.55,
+              padding: "12px 14px", background: C.bgAlt,
+              border: `1px solid ${C.borderSoft}`, borderRadius: 8,
+            }}
+          >
+            {previewLine}
+          </div>
+        </div>
+
+        {/* D — Validation errors */}
+        {errors.length > 0 && (
+          <div
+            style={{
+              borderRadius: 8, border: `1px solid ${C.amberBorder}`,
+              padding: "10px 12px", fontSize: 12.5, color: C.amber,
+              display: "grid", gap: 4,
+            }}
+          >
+            {errors.map((e, i) => <div key={i}>· {e}</div>)}
+          </div>
+        )}
+
+      </div>
+    </OutputCardShell>
   );
 }
 
@@ -1702,6 +2108,35 @@ function ConsultContent() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Medication schedule — always visible; vet builds the reminder
+          schedule here after reviewing the prescription. */}
+      <div style={{ marginTop: 36 }}>
+        <h3
+          style={{
+            fontFamily: FONT_SERIF,
+            fontSize: 18,
+            fontWeight: 600,
+            letterSpacing: -0.3,
+            margin: "0 0 4px",
+            color: C.text,
+          }}
+        >
+          Medication schedule
+        </h3>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 12 }}>
+          Build a reminder schedule for the owner.
+        </div>
+        <MedicationScheduleCard
+          patient={patient}
+          onSubmit={(payload) => {
+            console.log("[medication-schedule] payload", payload);
+            flashToast(
+              `Schedule saved · ${payload.times.length} time${payload.times.length === 1 ? "" : "s"} · ${payload.start_date} → ${payload.end_date}`,
+            );
+          }}
+        />
       </div>
 
       {/* Owner Telegram delivery — appears after the orchestrator emits
