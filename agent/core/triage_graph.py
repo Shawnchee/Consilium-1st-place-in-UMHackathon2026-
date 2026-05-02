@@ -80,6 +80,13 @@ async def retrieve_history_node(
     ns = ("clinic_knowledge", state["clinic_id"])
     sop_item = await store.aget(ns, "master_sops")
     clinic_sops = sop_item.value if sop_item else {"rules": []}
+    
+    # --- VERIFICATION LOG ---
+    print(f"--- BRAIN CHECK: Found {len(clinic_sops.get('rules', []))} active rules for {state['clinic_id']} ---")
+    for rule in clinic_sops.get('rules', []):
+        action = rule.get('action', str(rule))
+        print(f"  > Rule Action: {action[:100]}...")
+    # ------------------------
 
     return {"retrieved_history": visits_history, "clinic_sops": [clinic_sops]}
 
