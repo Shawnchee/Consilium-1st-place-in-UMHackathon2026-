@@ -139,11 +139,13 @@ function logDecision(d: TriageDecision) {
     `\x1b[35m[agent]\x1b[0m \x1b[1mdecision\x1b[0m → ${color}${d.decision.toUpperCase()}\x1b[0m  confidence=${d.confidence.toFixed(2)}`,
   );
   console.log(`  \x1b[90m↳ reasoning:\x1b[0m ${d.reasoning}`);
-  for (const diff of d.differentials) {
-    const tone = diff.tone === "red" ? "\x1b[31m" : "\x1b[32m";
-    console.log(
-      `    ${tone}•\x1b[0m ${diff.cause.padEnd(46)} ${Math.round(diff.prob * 100)}%`,
-    );
+  if (d.differentials) {
+    for (const diff of d.differentials) {
+      const tone = diff.tone === "red" ? "\x1b[31m" : "\x1b[32m";
+      console.log(
+        `    ${tone}•\x1b[0m ${diff.cause.padEnd(46)} ${Math.round(diff.prob * 100)}%`,
+      );
+    }
   }
   console.log(`  \x1b[90m↳ action:\x1b[0m ${d.recommendedAction}`);
   console.log(`\x1b[36m[bot]\x1b[0m outbound  "${d.ownerReplyDraft}"`);
