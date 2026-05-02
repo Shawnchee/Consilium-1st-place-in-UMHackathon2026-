@@ -79,6 +79,10 @@ export interface FollowUp {
   tsLabel?: string;
   conversation?: ConversationTurn[];
   toolCallCount?: number;
+  /** Telegram chat id of the owner — required for the doctor-approved send. */
+  chatId?: string;
+  /** Patient row id — required by /api/consult/telegram-send for owner_telegram backwrite. */
+  patientId?: string;
 }
 
 export interface MetricCardData {

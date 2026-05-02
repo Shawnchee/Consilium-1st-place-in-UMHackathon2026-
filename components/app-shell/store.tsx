@@ -27,9 +27,11 @@ interface StoreCtx {
   // UI state
   toast: string | null;
   escalation: FollowUp | null;
+  approving: boolean;
+  approveError: string | null;
   openEscalation: (f: FollowUp) => void;
   closeEscalation: () => void;
-  approveEscalation: () => void;
+  approveEscalation: (overrideDraft?: string) => Promise<void>;
   setToast: (msg: string | null) => void;
   flashToast: (msg: string) => void;
   expandedPatient: string | null;
@@ -55,6 +57,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const [toast, setToast] = useState<string | null>(null);
   const [escalation, setEscalation] = useState<FollowUp | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
 
   // `silent` skips the loading skeleton flash — used for Realtime-triggered
@@ -142,14 +146,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToast(null), 3400);
   }, []);
 
-  const openEscalation = useCallback((f: FollowUp) => setEscalation(f), []);
-  const closeEscalation = useCallback(() => setEscalation(null), []);
-  const approveEscalation = useCallback(() => {
-    setEscalation((cur) => {
-      if (!cur) return null;
-      setFollowups((fs) => fs.filter((x) => x.id !== cur.id));
-      setResolvedCount((c) => c + 1);
-      // fire-and-forget — mock route just logs
+  const openEscalation = useCallback((f: FollowUp) => {
+    setApproveError(null);
+    setEscalation(f);
+  }, []);
+  const closeEscalation = useCallback(() => {
+    setApproveError(null);
+    setEscalation(null);
+  }, []);
+  const approveEscalation = useCallback(async (overrideDraft?: string) => {
+    const cur = escalation;
+    if (!cur || approving) return;
+
+    const body = (overrideDraft ?? cur.draft ?? "").trim();
+    if (!body) {
+      setApproveError("No draft to send.");
+      return;
+    }
+    if (!cur.chatId) {
+      setApproveError(
+        "No Telegram chat linked to this follow-up — cannot send.",
+      );
+      return;
+    }
+    if (!cur.patientId) {
+      setApproveError("No patient linked to this follow-up — cannot send.");
+      return;
+    }
+
+    setApproving(true);
+    setApproveError(null);
+    try {
+      await api.telegramSend({
+        chatId: cur.chatId,
+        body,
+        patientId: cur.patientId,
+      });
+      // Log the doctor's approval after a successful delivery.
       void api
         .correction({
           feature: "triage",
@@ -158,10 +191,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           approved: true,
         })
         .catch(() => {});
+      setFollowups((fs) => fs.filter((x) => x.id !== cur.id));
+      setResolvedCount((c) => c + 1);
       flashToast(`Sent to ${cur.owner} · ${cur.patient} closed`);
-      return null;
-    });
-  }, [flashToast]);
+      setEscalation(null);
+    } catch (err) {
+      setApproveError(err instanceof Error ? err.message : "send failed");
+    } finally {
+      setApproving(false);
+    }
+  }, [escalation, approving, flashToast]);
 
   return (
     <Ctx.Provider
@@ -175,6 +214,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         refresh,
         toast,
         escalation,
+        approving,
+        approveError,
         openEscalation,
         closeEscalation,
         approveEscalation,

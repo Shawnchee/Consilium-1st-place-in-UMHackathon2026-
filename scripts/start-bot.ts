@@ -17,7 +17,9 @@ loadEnvConfig(process.cwd());
 
 (async () => {
   const { getBot } = await import("../lib/telegram");
-  const { handleOwnerMessage } = await import("../lib/telegram-handler");
+  const { handleOwnerMessage, ownerAutoReply } = await import(
+    "../lib/telegram-handler"
+  );
   const { ENV } = await import("../lib/env");
 
   const bot = getBot();
@@ -39,14 +41,14 @@ loadEnvConfig(process.cwd());
     if (text.startsWith("/")) return; // commands handled above
     console.log(`[bot] <- ${chatId}: ${text}`);
     try {
-      const { reply, decision, followupId, confidence } =
-        await handleOwnerMessage(chatId, { text });
+      const result = await handleOwnerMessage(chatId, { text });
+      const { decision, followupId, confidence } = result;
       console.log(
         `[bot] -> decision=${decision} followup=${followupId ?? "(unlinked)"} conf=${
           confidence ?? "-"
         }`,
       );
-      await ctx.reply(reply);
+      await ctx.reply(ownerAutoReply(result));
     } catch (err) {
       console.error("[bot] error handling message", err);
       await ctx.reply(
@@ -66,17 +68,17 @@ loadEnvConfig(process.cwd());
       `[bot] <- ${chatId}: [photo${caption ? ` + caption: "${caption}"` : ""}]`,
     );
     try {
-      const { reply, decision, followupId, confidence, photoUrls } =
-        await handleOwnerMessage(chatId, {
-          text: caption,
-          photoFileIds: [largest.file_id],
-        });
+      const result = await handleOwnerMessage(chatId, {
+        text: caption,
+        photoFileIds: [largest.file_id],
+      });
+      const { decision, followupId, confidence, photoUrls } = result;
       console.log(
         `[bot] -> decision=${decision} followup=${followupId ?? "(unlinked)"} conf=${
           confidence ?? "-"
         } photo=${photoUrls?.[0] ?? "(none)"}`,
       );
-      await ctx.reply(reply);
+      await ctx.reply(ownerAutoReply(result));
     } catch (err) {
       console.error("[bot] error handling photo", err);
       await ctx.reply(
