@@ -78,14 +78,25 @@ export const api = {
     postJSON<TriageRequest, TriageResponse>("/api/triage", req),
   correction: (req: CorrectionRequest) =>
     postJSON<CorrectionRequest, CorrectionResponse>("/api/corrections", req),
-  createVisit: (req: { 
-    patientId: string; 
+  createVisit: (req: {
+    patientId: string;
     rawNotes: string;
-    soap: any; 
-    prescription: any; 
-    billing: any; 
-    todos: any 
-  }) => postJSON<any, any>("/api/visits", req),
+    soap: any;
+    prescription: any;
+    billing: any;
+    todos: any;
+    /**
+     * Optional Telegram chat id to link this visit to. When passed, the
+     * server inserts a stub `followups` row so the bot can correlate
+     * future owner messages to this visit. Required for the demo's
+     * after-hours triage beat.
+     */
+    telegramChatId?: string;
+  }) =>
+    postJSON<any, { success: true; visitId: string; followupId: string | null }>(
+      "/api/visits",
+      req,
+    ),
   telegramSend: (req: TelegramSendRequest) =>
     postJSON<TelegramSendRequest, TelegramSendResponse>(
       "/api/consult/telegram-send",

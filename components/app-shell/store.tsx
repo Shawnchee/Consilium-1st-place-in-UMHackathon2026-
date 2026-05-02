@@ -330,6 +330,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const payload = buildPayloadFromConsult(patient, result, prior);
       const upsert = await api.upsertPassport({ patientId, payload });
 
+      // Persist the visit + a stub followup tied to the chat id. The
+      // followup is what lets the Telegram bot recognise the owner's
+      // future messages and triage them against THIS visit. Without it
+      // the bot sees `no followup linked to chat <id>` and the demo's
+      // after-hours triage beat fails. Best-effort — visit save errors
+      // are surfaced as a toast but don't roll back the passport/send.
+      try {
+        await api.createVisit({
+          patientId,
+          rawNotes: "(close-case from consult page)",
+          soap: result.summary.doctorSummary.soap,
+          prescription: result.summary.prescription,
+          billing: result.summary.billing,
+          todos: result.summary.todos,
+          telegramChatId: chatId.trim(),
+        });
+      } catch (err) {
+        console.warn("[close-case] visit/followup save failed", err);
+      }
+
       const origin =
         typeof window !== "undefined" ? window.location.origin : "";
       const absoluteUrl = `${origin}${upsert.url}`;

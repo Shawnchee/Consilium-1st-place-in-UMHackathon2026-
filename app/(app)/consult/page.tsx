@@ -32,6 +32,21 @@ import { CLINIC } from "@/lib/clinic";
 // ─────────────────────────────────────────────────────────────────────
 const SCENARIOS: { id: string; label: string; blurb: string; text: string }[] = [
   {
+    id: "leo-uro",
+    label: "Urinary obstruction (Leo, demo)",
+    blurb: "Stranguria + struvite crystals · explicit Rx for demo",
+    text:
+      "T 38.7°C, HR 105, BAR. BW 22kg. Bladder firm + tender on palpation. " +
+      "Penile exam: small grit at urethral opening. Urinalysis: pH 8.0, struvite crystals heavy, +3 blood, no growth on rapid culture. " +
+      "Plan: hospitalise overnight.\n\n" +
+      "Prescription:\n" +
+      "- Hartmann's solution IV 2.5 mL/kg/hr x 12 hours (in-clinic, dispense 0)\n" +
+      "- Buprenorphine 0.02 mg/kg IV q6h x 24 hours, dispense 1.5 mL of 0.3 mg/mL injectable\n" +
+      "- Meloxicam 0.1 mg/kg PO SID x 5 days, dispense 5 mL of 1.5 mg/mL oral suspension\n" +
+      "- Royal Canin Urinary SO 4 kg, dispense 1 bag\n\n" +
+      "Urethral cath if obstruction worsens. X-ray + ultrasound tomorrow morning. Discussed cystotomy possibility with owner. Recheck 48h post-op or sooner if straining recurs.",
+  },
+  {
     id: "cysto",
     label: "Cystoliths pre-op (Milo)",
     blurb: "Bladder stones, surgery tomorrow · X-ray + bloods today",
@@ -2048,6 +2063,9 @@ function ConsultContent() {
                       prescription: output.prescription,
                       billing: output.billing,
                       todos: output.todos,
+                      // Pass owner_telegram so the bot can correlate
+                      // future owner messages back to this visit.
+                      telegramChatId: patient.ownerTelegram ?? undefined,
                     });
                     setSaveState("saved");
                     flashToast(
