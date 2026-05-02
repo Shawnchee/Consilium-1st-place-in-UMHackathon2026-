@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button, Card, Icon, Pill } from "@/components/atoms";
 import { PageHeader, PetAvatar } from "@/components/app-shell/page-header";
 import { useStore } from "@/components/app-shell/store";
@@ -690,9 +691,46 @@ function ExampleDropdown({ onPick }: { onPick: (text: string, label: string) => 
 // ─────────────────────────────────────────────────────────────────────
 function ConsultContent() {
   const params = useSearchParams();
+  const router = useRouter();
   const pid = params.get("pid");
   const { flashToast, patients } = useStore();
   const patient = patients.find((p) => p.id === pid) || patients[0];
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const switchTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const switchMenuRef = useRef<HTMLDivElement | null>(null);
+  const [switchAnchor, setSwitchAnchor] = useState<{ top: number; right: number } | null>(null);
+  useEffect(() => {
+    if (!switchOpen) return;
+    const updateAnchor = () => {
+      const el = switchTriggerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setSwitchAnchor({
+        top: rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    updateAnchor();
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (switchTriggerRef.current?.contains(t)) return;
+      if (switchMenuRef.current?.contains(t)) return;
+      setSwitchOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSwitchOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", updateAnchor);
+    window.addEventListener("scroll", updateAnchor, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", updateAnchor);
+      window.removeEventListener("scroll", updateAnchor, true);
+    };
+  }, [switchOpen]);
 
   const [notes, setNotes] = useState("");
   // Multi-agent stream replaces the legacy single-call /api/consult flow.
@@ -995,24 +1033,117 @@ function ConsultContent() {
           </div>
           <div style={{ flex: 1 }} />
           <Pill tone={patient.tagColor}>{patient.tag}</Pill>
-          <Link href="/dashboard">
-            <button
-              type="button"
-              style={{
-                background: "transparent",
-                border: "none",
-                color: C.muted,
-                fontSize: 12.5,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                padding: "6px 2px",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
-            >
-              Switch patient
-            </button>
-          </Link>
+          <button
+            ref={switchTriggerRef}
+            type="button"
+            onClick={() => setSwitchOpen((o) => !o)}
+            aria-haspopup="listbox"
+            aria-expanded={switchOpen}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: C.muted,
+              fontSize: 12.5,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: "6px 2px",
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+            }}
+          >
+            Switch patient
+          </button>
+          {switchOpen && switchAnchor && typeof document !== "undefined" &&
+            createPortal(
+              <div
+                ref={switchMenuRef}
+                role="listbox"
+                style={{
+                  position: "fixed",
+                  top: switchAnchor.top,
+                  right: switchAnchor.right,
+                  minWidth: 280,
+                  maxHeight: 360,
+                  overflowY: "auto",
+                  background: C.card,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 10,
+                  boxShadow: SHADOW_CARD,
+                  zIndex: 1000,
+                  padding: 6,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: 1.3,
+                    textTransform: "uppercase",
+                    color: C.hint,
+                    padding: "6px 10px 8px",
+                  }}
+                >
+                  Select patient
+                </div>
+                {patients.map((op) => {
+                  const active = op.id === patient.id;
+                  return (
+                    <button
+                      key={op.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => {
+                        setSwitchOpen(false);
+                        if (!active) {
+                          router.push(`/consult?pid=${encodeURIComponent(op.id)}`);
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        background: active ? C.bgAlt : "transparent",
+                        border: "none",
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        cursor: active ? "default" : "pointer",
+                        fontFamily: "inherit",
+                        color: C.text,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!active) e.currentTarget.style.background = C.bgAlt;
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!active) e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            fontSize: 13.5,
+                            fontWeight: 600,
+                            color: C.text,
+                            letterSpacing: -0.1,
+                          }}
+                        >
+                          {op.name}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                          {op.species} · {op.breed} · Owner {op.owner}
+                        </div>
+                      </div>
+                      {active && (
+                        <span style={{ fontSize: 11, color: C.hint }}>current</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>,
+              document.body,
+            )}
         </div>
         {/* Probe reminder row — quiet muted bar */}
         <div
