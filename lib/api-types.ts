@@ -205,7 +205,7 @@ export interface TelegramSendResponse {
 // below that to leave room for the aftercare suffix the route appends.
 const MAX_TG_BODY_LEN = 3_500;
 const MAX_TG_AFTERCARE_ITEMS = 12;
-const MAX_TG_AFTERCARE_ITEM_LEN = 200;
+const MAX_TG_AFTERCARE_ITEM_LEN = 500;
 export function parseTelegramSendRequest(raw: unknown): TelegramSendRequest {
   const r = raw as Partial<TelegramSendRequest>;
   if (!r || typeof r !== "object") throw new ApiError(400, "body must be object");
