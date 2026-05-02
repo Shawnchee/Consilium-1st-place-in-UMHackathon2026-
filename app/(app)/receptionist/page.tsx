@@ -46,6 +46,7 @@ export default function ReceptionistPage() {
   const [sex, setSex] = useState<"Male" | "Female">("Male");
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
+  const [reason, setReason] = useState("");
 
   function resetForm() {
     setName("");
@@ -55,6 +56,7 @@ export default function ReceptionistPage() {
     setSex("Male");
     setOwnerName("");
     setOwnerPhone("");
+    setReason("");
     setStatus({ kind: "idle" });
   }
 
@@ -75,6 +77,7 @@ export default function ReceptionistPage() {
         sex,
         ownerName,
         ownerPhone,
+        reasonForVisit: reason.trim() || undefined,
       });
       // The Realtime subscription on the doctor side will pick this up
       // and flash the clickable arrival banner. We also locally refresh
@@ -169,7 +172,7 @@ export default function ReceptionistPage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     disabled={sending}
-                    placeholder="e.g. Brandog"
+                    placeholder="e.g. Leo"
                     style={inputStyle}
                   />
                 </Field>
@@ -254,6 +257,24 @@ export default function ReceptionistPage() {
                     disabled={sending}
                     placeholder="+60 13 928 4717"
                     style={{ ...inputStyle, fontFamily: FONT_MONO }}
+                  />
+                </Field>
+
+                <Field label="What to probe today">
+                  <textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    disabled={sending}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="Owner reports straining to urinate, blood in urine x 2 days. No prior episodes."
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      minHeight: 72,
+                      fontFamily: "inherit",
+                      lineHeight: 1.5,
+                    }}
                   />
                 </Field>
 

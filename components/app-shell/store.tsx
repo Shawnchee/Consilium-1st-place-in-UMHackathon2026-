@@ -45,7 +45,12 @@ interface StoreCtx {
    * registered intake doesn't require a manual refresh. Cleared
    * by the banner's dismiss button or after auto-timeout.
    */
-  newPatientArrival: { id: string; name: string; arrivedAt: number } | null;
+  newPatientArrival: {
+    id: string;
+    name: string;
+    reason: string | null;
+    arrivedAt: number;
+  } | null;
   dismissNewPatientArrival: () => void;
 
   /**
@@ -73,6 +78,7 @@ type FollowupRowPayload = {
 type PatientRowPayload = {
   id: string;
   name?: string | null;
+  reason_for_visit?: string | null;
 };
 
 const Ctx = createContext<StoreCtx | null>(null);
@@ -200,6 +206,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setNewPatientArrival({
             id: row.id,
             name: row.name ?? "New patient",
+            reason: row.reason_for_visit ?? null,
             arrivedAt: Date.now(),
           });
         },

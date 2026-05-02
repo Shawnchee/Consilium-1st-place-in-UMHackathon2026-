@@ -12,7 +12,7 @@ import type {
 import { parseCreatePatientRequest } from "@/lib/api-types";
 
 const PATIENT_COLS =
-  "id,name,species,breed,age_years,sex,owner_name,owner_phone,owner_telegram";
+  "id,name,species,breed,age_years,sex,owner_name,owner_phone,owner_telegram,reason_for_visit";
 
 export async function GET(req: Request) {
   try {
@@ -76,8 +76,9 @@ export async function POST(req: Request) {
             sex: payload.sex,
             owner_name: payload.ownerName,
             owner_phone: payload.ownerPhone,
+            reason_for_visit: payload.reasonForVisit ?? null,
           })
-          .select()
+          .select(PATIENT_COLS)
           .single<PatientRow>();
 
         if (error) throw error;

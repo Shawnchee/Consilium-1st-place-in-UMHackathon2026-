@@ -15,10 +15,12 @@ import {
   useCaptureStream,
 } from "@/components/agent-team";
 import { api } from "@/lib/api";
+import { Skeleton } from "@/components/app-shell/skeleton";
 import { C, FONT_MONO, FONT_SERIF, SHADOW_CARD } from "@/lib/tokens";
 import type {
   BillingItem,
   ConsultOutput,
+  Patient,
   PrescriptionItem,
   SoapNote,
   TodoItem,
@@ -694,7 +696,53 @@ function ConsultContent() {
   const params = useSearchParams();
   const pid = params.get("pid");
   const { flashToast, patients } = useStore();
-  const patient = patients.find((p) => p.id === pid) || patients[0];
+
+  // Fetch-on-demand for patients arriving from a Realtime push: when the
+  // doctor clicks "Open consult" on a new-patient banner, the local
+  // `patients` array hasn't yet been refreshed by the async Realtime
+  // callback. Falling back to patients[0] silently loaded the wrong
+  // patient; instead, fetch the single patient by id while we wait.
+  const localPatient = pid
+    ? patients.find((p) => p.id === pid)
+    : patients[0];
+  const [fetchedPatient, setFetchedPatient] = useState<Patient | null>(null);
+  const [fetchState, setFetchState] = useState<"idle" | "loading" | "not-found">(
+    "idle",
+  );
+
+  useEffect(() => {
+    if (!pid) {
+      setFetchedPatient(null);
+      setFetchState("idle");
+      return;
+    }
+    if (patients.find((p) => p.id === pid)) {
+      setFetchedPatient(null);
+      setFetchState("idle");
+      return;
+    }
+    if (fetchedPatient?.id === pid) return;
+    let cancelled = false;
+    setFetchState("loading");
+    setFetchedPatient(null);
+    api
+      .getPatient(pid)
+      .then((res) => {
+        if (cancelled) return;
+        setFetchedPatient(res.patient);
+        setFetchState("idle");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFetchedPatient(null);
+        setFetchState("not-found");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pid, patients, fetchedPatient?.id]);
+
+  const patient = localPatient ?? fetchedPatient;
 
   const [notes, setNotes] = useState("");
   // Multi-agent stream replaces the legacy single-call /api/consult flow.
@@ -901,10 +949,110 @@ function ConsultContent() {
   const fmtTime = (n: number) =>
     `${Math.floor(n / 60)}:${(n % 60).toString().padStart(2, "0")}`;
 
+  if (fetchState === "not-found") {
+    return (
+      <div style={{ padding: "0 32px 120px", maxWidth: 1480, margin: "0 auto" }}>
+        <PageHeader
+          eyebrow="Consultation"
+          title="Patient not found."
+          sub="The patient id in the URL does not match any record in this clinic."
+          right={
+            <Link href="/dashboard">
+              <Button variant="ghost" size="sm" icon={Icon.back(14)}>
+                Dashboard
+              </Button>
+            </Link>
+          }
+        />
+        <Card
+          style={{
+            padding: "44px 28px",
+            textAlign: "center",
+            boxShadow: SHADOW_CARD,
+          }}
+        >
+          <div
+            style={{
+              fontFamily: FONT_SERIF,
+              fontSize: 17,
+              fontWeight: 600,
+              color: C.text,
+              marginBottom: 6,
+            }}
+          >
+            We could not load this patient
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: C.muted,
+              maxWidth: 420,
+              margin: "0 auto 16px",
+              lineHeight: 1.55,
+            }}
+          >
+            The patient id <code style={{ fontFamily: FONT_MONO }}>{pid}</code>{" "}
+            does not exist or was removed. Head back to the dashboard to pick a
+            patient from the schedule.
+          </div>
+          <Link href="/dashboard">
+            <Button size="md" icon={Icon.back(14)}>
+              Back to dashboard
+            </Button>
+          </Link>
+        </Card>
+      </div>
+    );
+  }
+
   if (!patient) {
     return (
-      <div style={{ padding: 48, color: C.muted, fontSize: 14 }}>
-        Loading patient…
+      <div style={{ padding: "0 32px 120px", maxWidth: 1480, margin: "0 auto" }}>
+        <PageHeader
+          eyebrow="Consultation"
+          title="Loading patient…"
+          sub="Fetching record from the clinic database."
+          right={
+            <Link href="/dashboard">
+              <Button variant="ghost" size="sm" icon={Icon.back(14)}>
+                Dashboard
+              </Button>
+            </Link>
+          }
+        />
+        <Card
+          style={{
+            padding: 0,
+            marginBottom: 28,
+            overflow: "hidden",
+            boxShadow: SHADOW_CARD,
+          }}
+        >
+          <div
+            style={{
+              padding: "16px 20px",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <Skeleton height={44} width={44} radius="50%" />
+            <div style={{ flex: 1, display: "grid", gap: 8 }}>
+              <Skeleton height={20} width="32%" />
+              <Skeleton height={12} width="48%" />
+            </div>
+            <Skeleton height={22} width={70} radius={999} />
+          </div>
+          <div
+            style={{
+              borderTop: `1px solid ${C.border}`,
+              padding: "10px 20px",
+              background: C.bgAlt,
+            }}
+          >
+            <Skeleton height={12} width="55%" />
+          </div>
+        </Card>
       </div>
     );
   }
@@ -1016,6 +1164,44 @@ function ConsultContent() {
             </button>
           </Link>
         </div>
+        {/* Chief complaint — what the receptionist typed in today.
+            Only shown when patient.reason is populated (receptionist flow). */}
+        {patient.reason && (
+          <div
+            style={{
+              borderTop: `1px solid ${C.border}`,
+              padding: "12px 20px",
+              background: "#fff",
+              display: "flex",
+              alignItems: "baseline",
+              gap: 12,
+            }}
+          >
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                color: C.amber,
+                flexShrink: 0,
+              }}
+            >
+              Chief complaint
+            </span>
+            <span style={{ color: C.border }}>·</span>
+            <span
+              style={{
+                fontSize: 14,
+                color: C.text,
+                fontWeight: 500,
+                lineHeight: 1.5,
+              }}
+            >
+              {patient.reason}
+            </span>
+          </div>
+        )}
         {/* Probe reminder row — quiet muted bar */}
         <div
           style={{

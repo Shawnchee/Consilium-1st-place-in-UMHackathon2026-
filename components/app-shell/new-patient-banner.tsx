@@ -16,6 +16,11 @@ import { C, FONT_MONO, RADIUS } from "@/lib/tokens";
 
 const AUTO_DISMISS_MS = 45_000;
 
+function truncate(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return s.slice(0, n - 1).trimEnd() + "…";
+}
+
 export default function NewPatientBanner() {
   const { newPatientArrival, dismissNewPatientArrival } = useStore();
 
@@ -90,6 +95,22 @@ export default function NewPatientBanner() {
                 · brief generating
               </span>
             </div>
+            {newPatientArrival.reason && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontStyle: "italic",
+                  color: C.muted,
+                  marginTop: 3,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={newPatientArrival.reason}
+              >
+                here for: {truncate(newPatientArrival.reason, 100)}
+              </div>
+            )}
           </div>
           <Link
             href={`/consult?pid=${newPatientArrival.id}`}

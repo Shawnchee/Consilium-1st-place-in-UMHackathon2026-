@@ -27,6 +27,7 @@ export type PatientRow = {
   owner_name: string | null;
   owner_phone: string | null;
   owner_telegram: string | null;
+  reason_for_visit: string | null;
 };
 
 const EMPTY_BRIEF: Brief = {
@@ -59,7 +60,7 @@ export function rowToPatient(r: PatientRow): Patient {
     time: display?.time ?? "—",
     tag: display?.tag ?? "Scheduled",
     tagColor: (display?.tagColor as TagColor) ?? "green",
-    reason: display?.reason ?? "",
+    reason: r.reason_for_visit ?? display?.reason ?? "",
     brief: briefByName.get(r.name) ?? EMPTY_BRIEF,
   };
 }

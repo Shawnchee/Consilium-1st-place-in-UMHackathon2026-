@@ -28,8 +28,11 @@ export interface CreatePatientRequest {
   sex: "Male" | "Female";
   ownerName: string;
   ownerPhone: string;
+  reasonForVisit?: string;
 }
 export type CreatePatientResponse = { patient: Patient };
+
+const MAX_REASON_FOR_VISIT_LEN = 500;
 
 export function parseCreatePatientRequest(raw: unknown): CreatePatientRequest {
   const r = raw as Partial<CreatePatientRequest>;
@@ -42,6 +45,15 @@ export function parseCreatePatientRequest(raw: unknown): CreatePatientRequest {
   if (typeof r.ownerName !== "string" || !r.ownerName.trim()) throw new ApiError(400, "ownerName required");
   if (typeof r.ownerPhone !== "string") throw new ApiError(400, "ownerPhone required");
 
+  let reasonForVisit: string | undefined;
+  if (r.reasonForVisit !== undefined && r.reasonForVisit !== null && r.reasonForVisit !== "") {
+    if (typeof r.reasonForVisit !== "string")
+      throw new ApiError(400, "reasonForVisit must be string");
+    if (r.reasonForVisit.length > MAX_REASON_FOR_VISIT_LEN)
+      throw new ApiError(413, `reasonForVisit exceeds ${MAX_REASON_FOR_VISIT_LEN} chars`);
+    reasonForVisit = r.reasonForVisit;
+  }
+
   return {
     name: r.name,
     species: r.species,
@@ -50,6 +62,7 @@ export function parseCreatePatientRequest(raw: unknown): CreatePatientRequest {
     sex: r.sex,
     ownerName: r.ownerName,
     ownerPhone: r.ownerPhone,
+    reasonForVisit,
   };
 }
 
