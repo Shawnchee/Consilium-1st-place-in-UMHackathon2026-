@@ -1,6 +1,6 @@
 # Consilium
 
-**AI Decision Copilot for Veterinary Clinics** — built for UMHackathon 2026.
+**AI Decision Copilot for Veterinary Clinics** — built for UMHackathon 2026 (Final Round).
 
 > *Latin: medical council / advice.* The AI that thinks before the consult, acts after it.
 
@@ -11,29 +11,35 @@ Consilium gives solo vet clinics an AI copilot that briefs the doctor before eve
 
 ---
 
+## 📦 Final Round Deliverables
+
+All five required submission artifacts are checked into this repository for easy access. Every PDF document carries the **Z AI** and **YTL AI Labs** logos on the cover page as required by the submission guidelines.
+
+| # | Deliverable | File | Description |
+|---|---|---|---|
+| 1 | 💾 **Code Repository** | <https://github.com/Shawnchee/DA-Homies> | Full source — Next.js 16 + Claude (Haiku 4.5 / Sonnet 4.6) + Supabase + grammY Telegram bot. Live build at <https://consilium-tau.vercel.app>. |
+| 2 | 🧪 **Refined QA Testing Document** | [`Refined QATD.pdf`](./Refined%20QATD.pdf) — source: [`refined_qa.md`](./refined_qa.md) | Updated test strategy, expanded test matrix, coverage, defect tracking and regression plan for the final round. |
+| 3 | 🚀 **Deployment Plan** | [`Deployment Plan.pdf`](./Deployment%20Plan.pdf) — source: [`cicd.md`](./cicd.md) | Environments, CI/CD pipeline, secret management, rollback strategy, observability, on-call runbooks. |
+| 4 | 📈 **Business Proposal** | [`Business Proposal.pdf`](./Business%20Proposal.pdf) — source: [`business_proposal.md`](./business_proposal.md) | Market sizing, pricing tiers, go-to-market motion, unit economics, and financial model for the developed product. |
+| 5 | 🎤 **Final Round Pitch Deck** | [`Consilium Pitch Deck.pdf`](./Consilium%20Pitch%20Deck.pdf) | Final-round presentation slides covering problem, solution, decision layer, demo highlights, traction, and ask. |
+
+📁 **Full submission Drive folder:** <https://drive.google.com/drive/u/0/folders/160O04WT0iuOfyCdfYf1EiLhesZAOUw5k>
+
+### Earlier-round artifacts (kept for reference)
+
+| Deliverable | File |
+|---|---|
+| 📘 PRD (Product Requirements) | [`PRD.pdf`](./PRD.pdf) |
+| 🏛️ SAD (System Architecture) | [`SAD.pdf`](./SAD.pdf) |
+| 🧪 QATD (initial QA document) | [`QATD.pdf`](./QATD.pdf) — superseded by Refined QATD above |
+
+---
+
 ## 🎥 Pitch Video (10-minute demo)
 
 > **▶️ Watch the pitch + product demo:** **<https://drive.google.com/file/d/1XFIBHLVO8OItMsTh8jcMqsAVfZDE3XTE/view?usp=drive_link>**
 
 The video walks through the problem, the three-stage decision layer (pre-consult brief → consult capture → post-discharge triage), and a live end-to-end demo of the Telegram-based owner follow-up triggering an escalation card on the doctor dashboard.
-
----
-
-## 📄 Submission Deliverables
-
-All required documentation is checked into this repository in PDF format.
-
-| Deliverable | File | Description |
-|---|---|---|
-| 📘 **PRD** (Product Requirements) | [`PRD.pdf`](./PRD.pdf) | Product vision, user flows, features (F1–F6), success metrics |
-| 🏛️ **SAD** (System Architecture) | [`SAD.pdf`](./SAD.pdf) | System architecture diagrams, component interactions, data flow |
-| 🧪 **QATD** (Quality Assurance & Testing) | [`QATD.pdf`](./QATD.pdf) | Test strategy, test cases, QA matrix, coverage |
-| 🎤 **Pitch Deck** | [`Consilium Pitch Deck.pdf`](./Consilium%20Pitch%20Deck.pdf) | Hackathon pitch slides |
-| 🎥 **Pitch Video (10 min)** | [Google Drive link](https://drive.google.com/file/d/1XFIBHLVO8OItMsTh8jcMqsAVfZDE3XTE/view?usp=drive_link) | Recorded pitch + live product demonstration |
-| 💾 **Code Repository** | <https://github.com/Shawnchee/DA-Homies> | Full source code |
-| 🌐 **Live Deployment** | <https://consilium-tau.vercel.app> | Hosted demo (Vercel) |
-
-📁 **Full submission Drive folder:** <https://drive.google.com/drive/u/0/folders/160O04WT0iuOfyCdfYf1EiLhesZAOUw5k>
 
 ---
 
