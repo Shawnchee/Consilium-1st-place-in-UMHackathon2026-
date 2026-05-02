@@ -46,6 +46,31 @@ export interface HandleOwnerMessageResult {
   photoUrls?: string[];
 }
 
+/**
+ * Holding message sent to the owner when the AI reaches a terminal triage
+ * decision (escalate / monitor / clear). The actual reply draft is held
+ * for doctor review and only delivered when the doctor clicks
+ * "Approve & Send" in the UI.
+ */
+const HOLDING_REPLY =
+  "Thanks — we've got your update. Your vet will review and reply shortly.";
+
+/** Terminal decisions never auto-send; they wait for doctor approval. */
+export function isTerminalDecision(
+  d: HandleOwnerMessageResult["decision"],
+): boolean {
+  return d === "escalate" || d === "monitor" || d === "clear";
+}
+
+/**
+ * What to actually send back to the owner immediately. Tool-call prompts
+ * (info-gathering) and unlinked-chat help auto-send; terminal medical
+ * decisions return the holding message and wait for doctor approval.
+ */
+export function ownerAutoReply(result: HandleOwnerMessageResult): string {
+  return isTerminalDecision(result.decision) ? HOLDING_REPLY : result.reply;
+}
+
 export interface OwnerMessageInput {
   /** Caption text (may be empty when only a photo was sent). */
   text: string;

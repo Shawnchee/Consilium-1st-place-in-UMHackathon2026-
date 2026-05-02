@@ -10,7 +10,7 @@ import {
 import type { GetFollowupsResponse } from "@/lib/api-types";
 
 const SELECT =
-  "id,status,owner_message,recommended_action,draft_response,differentials,conversation,tool_call_count,sent_at,created_at,visits(visit_date,raw_notes,patients(name,owner_name))";
+  "id,status,owner_message,recommended_action,draft_response,differentials,conversation,tool_call_count,sent_at,created_at,telegram_chat_id,visits(visit_date,raw_notes,patients(id,name,owner_name))";
 
 export async function GET() {
   try {

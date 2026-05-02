@@ -313,8 +313,16 @@ function DifferentialBar({
 }
 
 export default function EscalationModal() {
-  const { escalation, closeEscalation, approveEscalation } = useStore();
+  const {
+    escalation,
+    closeEscalation,
+    approveEscalation,
+    approving,
+    approveError,
+  } = useStore();
   const [mounted, setMounted] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editedDraft, setEditedDraft] = useState("");
 
   useEffect(() => {
     if (!escalation) return;
@@ -329,6 +337,13 @@ export default function EscalationModal() {
       setMounted(false);
     };
   }, [escalation, closeEscalation]);
+
+  // Reset editor whenever a different escalation opens (or its draft changes
+  // upstream — e.g. owner sent another message and triage re-ran).
+  useEffect(() => {
+    setEditing(false);
+    setEditedDraft(escalation?.draft ?? "");
+  }, [escalation?.id, escalation?.draft]);
 
   if (!escalation) return null;
   const f = escalation;
@@ -530,24 +545,49 @@ export default function EscalationModal() {
               marginBottom: 8,
             }}
           >
-            Draft response · ready to send
+            Draft response · {editing ? "editing" : "ready to send"}
           </div>
-          <div
-            style={{
-              padding: "14px 16px",
-              borderRadius: RADIUS.md,
-              background: "#FBFAF7",
-              border: BORDER_HAIRLINE,
-              fontFamily: FONT_MONO,
-              fontSize: 13,
-              lineHeight: 1.6,
-              color: C.ink,
-              marginBottom: 16,
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {f.draft}
-          </div>
+          {editing ? (
+            <textarea
+              value={editedDraft}
+              onChange={(e) => setEditedDraft(e.target.value)}
+              autoFocus
+              spellCheck
+              style={{
+                width: "100%",
+                minHeight: 140,
+                padding: "14px 16px",
+                borderRadius: RADIUS.md,
+                background: "#FFFFFF",
+                border: `1px solid ${C.brand}`,
+                fontFamily: FONT_MONO,
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: C.ink,
+                marginBottom: 16,
+                resize: "vertical",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: RADIUS.md,
+                background: "#FBFAF7",
+                border: BORDER_HAIRLINE,
+                fontFamily: FONT_MONO,
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: C.ink,
+                marginBottom: 16,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {editedDraft || f.draft}
+            </div>
+          )}
         </div>
 
         {/* Action bar — PRD §F3: [Approve & Send] [Edit] [Call] */}
@@ -561,19 +601,36 @@ export default function EscalationModal() {
             background: "#FBFAF7",
           }}
         >
-          <Button size="md" onClick={approveEscalation} icon={Icon.check(15)}>
-            Approve &amp; Send
+          <Button
+            size="md"
+            onClick={() => {
+              void approveEscalation(editedDraft);
+            }}
+            disabled={approving || editing}
+            icon={Icon.check(15)}
+          >
+            {approving ? "Sending…" : "Approve & Send"}
           </Button>
-          <Button variant="soft" size="md" icon={Icon.edit(14)}>
-            Edit
+          <Button
+            variant="soft"
+            size="md"
+            onClick={() => setEditing((v) => !v)}
+            disabled={approving}
+            icon={editing ? Icon.check(14) : Icon.edit(14)}
+          >
+            {editing ? "Save" : "Edit"}
           </Button>
           <Button variant="soft" size="md" icon={Icon.phone(14)}>
             Call Owner
           </Button>
           <div style={{ flex: 1 }} />
-          <div style={{ fontSize: 11.5, color: C.muted }}>
-            Logs feedback · auto-sends via Telegram
-          </div>
+          {approveError ? (
+            <div style={{ fontSize: 11.5, color: "#B23A3A" }}>{approveError}</div>
+          ) : (
+            <div style={{ fontSize: 11.5, color: C.muted }}>
+              Sends draft via Telegram on approval
+            </div>
+          )}
         </div>
       </div>
     </div>

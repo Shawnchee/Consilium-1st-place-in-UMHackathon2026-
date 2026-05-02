@@ -18,7 +18,7 @@
 import { ApiError } from "@/lib/api-types";
 import { errorResponse, json } from "@/lib/api-response";
 import { ENV, hasTelegram, isProduction } from "@/lib/env";
-import { handleOwnerMessage } from "@/lib/telegram-handler";
+import { handleOwnerMessage, ownerAutoReply } from "@/lib/telegram-handler";
 import { sendTelegramMessage } from "@/lib/telegram";
 
 type TgPhotoSize = {
@@ -85,11 +85,15 @@ export async function POST(req: Request) {
       return json({ ok: true, skipped: "no text or photo" });
     }
 
-    const { reply, decision, followupId, photoUrls } = await handleOwnerMessage(
-      chatId,
-      { text, photoFileIds: photoFileIds.length > 0 ? photoFileIds : undefined },
-    );
-    await sendTelegramMessage(chatId, reply);
+    const result = await handleOwnerMessage(chatId, {
+      text,
+      photoFileIds: photoFileIds.length > 0 ? photoFileIds : undefined,
+    });
+    const { decision, followupId, photoUrls } = result;
+    // Terminal decisions (escalate/monitor/clear) wait for doctor approval —
+    // the AI's reply draft is persisted to followups.draft_response and the
+    // owner gets a brief holding message instead.
+    await sendTelegramMessage(chatId, ownerAutoReply(result));
 
     // Don't log photo URLs — they're public bucket links that bypass auth and
     // can leak into logs/SIEM. Just record presence and count.
