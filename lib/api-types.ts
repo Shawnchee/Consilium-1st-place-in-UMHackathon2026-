@@ -378,6 +378,36 @@ export function parseCorrectionRequest(raw: unknown): CorrectionRequest {
   };
 }
 
+// ─── /api/knowledge ─────────────────────────────────────────────────────────
+export interface KnowledgeRule {
+  action: string;
+  condition?: string;
+  added_date: string;
+  last_reinforced_at: string;
+  pinned: boolean;
+  verified: boolean;
+}
+export interface KnowledgeTrend {
+  label: string; // e.g. "Common Diagnoses"
+  summary: string;
+  is_persisting: boolean;
+  last_seen: string;
+}
+export type GetKnowledgeResponse = {
+  rules: KnowledgeRule[];
+  trends: KnowledgeTrend[];
+  updatedAt: string;
+};
+export interface UpdateKnowledgeRequest {
+  rules: KnowledgeRule[];
+}
+export function parseUpdateKnowledgeRequest(raw: unknown): UpdateKnowledgeRequest {
+  const r = raw as Partial<UpdateKnowledgeRequest>;
+  if (!r || typeof r !== "object") throw new ApiError(400, "body must be object");
+  if (!Array.isArray(r.rules)) throw new ApiError(400, "rules must be an array");
+  return { rules: r.rules as KnowledgeRule[] };
+}
+
 // ─── errors ─────────────────────────────────────────────────────────────────
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

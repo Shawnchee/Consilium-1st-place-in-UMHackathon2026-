@@ -1,0 +1,38 @@
+name: Clinic Brain Sync (Memory Consolidation)
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Runs at 2:00 AM UTC daily
+  workflow_dispatch: # Allows manual trigger from the "Actions" tab in GitHub
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r agent/requirements.txt
+
+      - name: Run Memory Consolidation
+        env:
+          # Map GitHub Secrets to the variable names expected by the Python code
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          CLINIC_ID: ${{ secrets.CLINIC_ID }}
+        run: |
+          # Add the current directory to PYTHONPATH so imports work correctly
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python agent/consolidate.py

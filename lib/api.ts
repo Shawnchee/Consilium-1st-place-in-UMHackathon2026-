@@ -20,6 +20,8 @@ import type {
   CreateVisitResponse,
   UpdateFollowupRequest,
   UpdateFollowupResponse,
+  GetKnowledgeResponse,
+  UpdateKnowledgeRequest,
 } from "./api-types";
 
 export const api = {
@@ -50,6 +52,9 @@ export const api = {
       "/api/consult/telegram-send",
       req,
     ),
+  getKnowledge: () => getJSON<GetKnowledgeResponse>("/api/knowledge"),
+  updateKnowledge: (req: UpdateKnowledgeRequest) =>
+    postJSON<UpdateKnowledgeRequest, { ok: boolean }>("/api/knowledge", req),
 
   transcribe: (blob: Blob) => {
     const fd = new FormData();

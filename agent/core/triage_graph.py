@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Annotated, TypedDict
-
+from datetime import datetime, timezone, timedelta
 from langchain_core.messages import AnyMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -81,8 +81,21 @@ async def retrieve_history_node(
     sop_item = await store.aget(ns, "master_sops")
     clinic_sops = sop_item.value if sop_item else {"rules": []}
     
+    # --- TEMPORAL EXPIRY (30-day TTL) ---
+    # If the brain hasn't been consolidated in 30 days, ignore it.
+    updated_at_str = clinic_sops.get("updated_at")
+    if updated_at_str:
+        try:
+            updated_at = datetime.fromisoformat(updated_at_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - updated_at > timedelta(days=30):
+                print(f"--- KNOWLEDGE STALE: Knowledge is >30 days old ({updated_at_str}). Ignoring. ---")
+                clinic_sops = {"rules": []}
+        except Exception as e:
+            print(f"--- KNOWLEDGE ERROR: Failed to parse updated_at ({e}). ---")
+    # ------------------------------------
+
     # --- VERIFICATION LOG ---
-    print(f"--- BRAIN CHECK: Found {len(clinic_sops.get('rules', []))} active rules for {state['clinic_id']} ---")
+    print(f"--- KNOWLEDGE CHECK: Found {len(clinic_sops.get('rules', []))} active rules for {state['clinic_id']} ---")
     for rule in clinic_sops.get('rules', []):
         action = rule.get('action', str(rule))
         print(f"  > Rule Action: {action[:100]}...")

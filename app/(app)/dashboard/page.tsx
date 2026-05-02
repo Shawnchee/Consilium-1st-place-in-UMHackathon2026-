@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Dot, Pill } from "@/components/atoms";
+import { api } from "@/lib/api";
 import { useStore } from "@/components/app-shell/store";
 import {
   SkeletonBrief,
@@ -12,7 +13,7 @@ import {
 import { ErrorBanner } from "@/components/app-shell/error-banner";
 import { AddPatientModal } from "@/components/app-shell/add-patient-modal";
 import { CLINIC } from "@/lib/clinic";
-import { C, FONT_SERIF, FONT_MONO } from "@/lib/tokens";
+import { C, FONT_SERIF, FONT_MONO, BORDER_HAIRLINE, RADIUS, SHADOW_CARD } from "@/lib/tokens";
 import type { MetricCardData, Patient } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -781,6 +782,40 @@ export default function DashboardPage() {
     setExpandedPatient,
   } = useStore();
 
+  const [trends, setTrends] = useState<any[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setTrendsLoading(true);
+    
+    api.getKnowledge()
+      .then(data => {
+        if (!mounted) return;
+        const rawTrends = data?.trends || [];
+        const normalizedTrends = rawTrends
+          .filter((t: any) => (t.label || t.category) !== "Follow-up Protocol")
+          .map((t: any) => ({
+            ...t,
+            label: t.label || t.category || "Insight",
+            summary: t.summary || t.finding || "No details available",
+            is_persisting: t.is_persisting || (t.frequency && t.frequency.includes("100%")) || false
+          }));
+        setTrends(normalizedTrends);
+        setUpdatedAt(data?.updatedAt || null);
+      })
+      .catch(err => {
+        if (!mounted) return;
+        console.warn("Failed to load trends for dashboard", err);
+      })
+      .finally(() => {
+        if (mounted) setTrendsLoading(false);
+      });
+
+    return () => { mounted = false; };
+  }, []);
+
   const escalations = followups.filter((f) => f.level === "escalate");
   const monitors = followups.filter((f) => f.level === "monitor");
   const [isAddModalOpen, setAddModalOpen] = useState(false);
@@ -789,11 +824,76 @@ export default function DashboardPage() {
     <div style={{ padding: "0 32px 120px", maxWidth: 1320, margin: "0 auto" }}>
       <HeroRow escalationCount={escalations.length} />
 
+      {/* What Happened Lately — Daily Briefing */}
+      {!trendsLoading && trends.length > 0 && (
+        <div style={{ 
+          marginBottom: 64, 
+          animation: "fadeUp 420ms ease both", 
+          animationDelay: "100ms"
+        }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 28 }}>
+            <h3 style={{ fontSize: 22, fontWeight: 600, fontFamily: FONT_SERIF, letterSpacing: "-0.02em", color: C.text, margin: 0 }}>
+              What Happened Lately
+            </h3>
+            {updatedAt && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.hint, textTransform: "uppercase", letterSpacing: 1 }}>
+                Last Sync: {new Date(updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            <div style={{ height: 1, flex: 1, backgroundColor: C.borderSoft, marginLeft: 8 }} />
+          </div>
+          
+          <div style={{ 
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: 24
+          }}>
+            {trends.slice(0, 4).map((t, i) => (
+              <div 
+                key={i}
+                style={{ 
+                  background: C.card, 
+                  border: BORDER_HAIRLINE, 
+                  borderRadius: RADIUS.xl, 
+                  padding: "28px",
+                  boxShadow: SHADOW_CARD,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                  transition: "transform 200ms ease"
+                }}
+              >
+                <div>
+                  <div style={{ 
+                    fontSize: 16, 
+                    fontWeight: 700, 
+                    color: C.brand, 
+                    letterSpacing: "-0.01em",
+                    marginBottom: 12,
+                    fontFamily: FONT_SERIF
+                  }}>
+                    {t.label}
+                  </div>
+                  <p style={{ 
+                    fontSize: 14, 
+                    color: C.text, 
+                    lineHeight: 1.6, 
+                    margin: 0,
+                    fontWeight: 450,
+                    opacity: 0.9
+                  }}>
+                    {t.summary}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {error && <ErrorBanner error={error} onRetry={() => void refresh()} />}
 
       {isAddModalOpen && <AddPatientModal onClose={() => setAddModalOpen(false)} />}
-
-      <KpiRow metrics={metrics} loading={loading} />
 
       <div
         style={{
