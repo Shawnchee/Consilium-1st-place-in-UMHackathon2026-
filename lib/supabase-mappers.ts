@@ -69,8 +69,11 @@ export function rowToPatient(r: PatientRow): Patient {
     tag: display?.tag ?? "Scheduled",
     tagColor: (display?.tagColor as TagColor) ?? "green",
     reason: r.reason_for_visit ?? display?.reason ?? "",
-    brief: briefByName.get(r.name) ?? EMPTY_BRIEF,
-    owner_telegram: r.owner_telegram ?? undefined,
+    // Use the locally constructed `brief` (which has reason_for_visit
+    // overlaid onto baseBrief.probe) — NOT the bare by-name lookup.
+    // Without this, freshly registered patients always showed the
+    // EMPTY_BRIEF "—" probe instead of the receptionist's input.
+    brief,
   };
 }
 
