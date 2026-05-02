@@ -16,6 +16,8 @@ import type {
   GetPatientsResponse,
   CreatePatientRequest,
   CreatePatientResponse,
+  TelegramSendRequest,
+  TelegramSendResponse,
   TriageRequest,
   TriageResponse,
 } from "./api-types";
@@ -64,6 +66,11 @@ export const api = {
     billing: any; 
     todos: any 
   }) => postJSON<any, any>("/api/visits", req),
+  telegramSend: (req: TelegramSendRequest) =>
+    postJSON<TelegramSendRequest, TelegramSendResponse>(
+      "/api/consult/telegram-send",
+      req,
+    ),
 
   /** Multipart upload of one or more images to a Supabase Storage bucket. */
   uploadPhotos: async (

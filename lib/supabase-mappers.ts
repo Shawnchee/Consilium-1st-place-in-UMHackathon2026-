@@ -80,10 +80,11 @@ export type FollowupRow = {
   tool_call_count: number | null;
   sent_at: string | null;
   created_at: string;
+  telegram_chat_id: string | null;
   visits: {
     visit_date: string;
     raw_notes: string | null;
-    patients: { name: string; owner_name: string | null } | null;
+    patients: { id: string; name: string; owner_name: string | null } | null;
   } | null;
 };
 
@@ -167,5 +168,7 @@ export function rowToFollowUp(r: FollowupRow): FollowUp {
     tsLabel: undefined,
     conversation: parseConversation(r.conversation),
     toolCallCount: r.tool_call_count ?? 0,
+    chatId: r.telegram_chat_id ?? undefined,
+    patientId: patient?.id ?? undefined,
   };
 }
