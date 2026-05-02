@@ -25,7 +25,7 @@ export const ENV = {
     name:
       read("NEXT_PUBLIC_CLINIC_NAME") ||
       read("CLINIC_NAME") ||
-      "Peng Aun Sg Dua Penang",
+      "Peng Aun Clinic Penang",
     doctor:
       read("NEXT_PUBLIC_CLINIC_DOCTOR") ||
       read("CLINIC_DOCTOR") ||
