@@ -27,6 +27,22 @@ export const api = {
     postJSON<CreatePatientRequest, CreatePatientResponse>("/api/patients", req),
   getPatient: (id: string) =>
     getJSON<GetPatientResponse>(`/api/patients?id=${encodeURIComponent(id)}`),
+  evidenceCheck: (req: {
+    patientName: string;
+    patientSpecies: string;
+    diagnosis: string;
+    drugs: string[];
+  }) =>
+    postJSON<
+      typeof req,
+      {
+        status: "clear" | "warning" | "unknown";
+        summary: string;
+        citations: { title: string; url: string }[];
+        cached?: boolean;
+        latencyMs: number;
+      }
+    >("/api/consult/evidence-check", req),
   setPatientTelegram: async (id: string, ownerTelegram: string | null) => {
     const resp = await fetch(`/api/patients?id=${encodeURIComponent(id)}`, {
       method: "PATCH",

@@ -705,6 +705,209 @@ function ExampleDropdown({ onPick }: { onPick: (text: string, label: string) => 
 // ─────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────
+/**
+ * Off-critical-path evidence check card. Auto-fires after the main
+ * pipeline completes and the orchestrator output (`output`) is
+ * available. Shows a "checking" spinner, then resolves to:
+ *   - clear: green ✓ summary, optionally with citations
+ *   - warning: amber ⚠ banner with the cited concern
+ *   - unknown: muted "no recent literature found" line
+ *
+ * Cached repeats hit Supabase in ~50ms; first-of-its-kind queries
+ * take 8-15s. Either way the doctor's main output is already on
+ * screen so they're never blocked.
+ */
+function EvidenceCheckCard({
+  patient,
+  output,
+}: {
+  patient: Patient;
+  output: ConsultOutput;
+}) {
+  type State =
+    | { kind: "checking" }
+    | {
+        kind: "done";
+        status: "clear" | "warning" | "unknown";
+        summary: string;
+        citations: { title: string; url: string }[];
+        cached: boolean;
+        latencyMs: number;
+      }
+    | { kind: "error"; message: string };
+  const [state, setState] = useState<State>({ kind: "checking" });
+
+  // Re-check whenever the output's prescription set changes — e.g. a
+  // regenerate produces a different drug list. Cached responses make
+  // re-runs near-instant on the same drug+species combo.
+  const drugKey = output.prescription.map((p) => p.drug).join("|");
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "checking" });
+    const drugs = output.prescription.map((p) => p.drug).filter(Boolean);
+    const diagnosis = output.soap.A?.split(/\.\s/)[0] ?? "";
+    api
+      .evidenceCheck({
+        patientName: patient.name,
+        patientSpecies: patient.species,
+        diagnosis,
+        drugs,
+      })
+      .then((r) => {
+        if (cancelled) return;
+        setState({
+          kind: "done",
+          status: r.status,
+          summary: r.summary,
+          citations: r.citations,
+          cached: !!r.cached,
+          latencyMs: r.latencyMs,
+        });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setState({
+          kind: "error",
+          message: err instanceof Error ? err.message : "check failed",
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patient.id, patient.name, patient.species, output.soap.A, drugKey]);
+
+  const palette =
+    state.kind === "done" && state.status === "warning"
+      ? { bg: C.amberLight, border: C.amberBorder, label: C.amber, dot: C.amber }
+      : state.kind === "done" && state.status === "clear"
+        ? { bg: C.greenLight, border: C.greenBorder, label: C.greenDark, dot: C.green }
+        : { bg: C.bgAlt, border: C.borderSoft, label: C.muted, dot: C.muted };
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 12,
+        padding: "14px 18px",
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        animation: "fadeUp 320ms ease both",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          fontSize: 18,
+          lineHeight: 1.2,
+          marginTop: 1,
+        }}
+      >
+        {state.kind === "checking"
+          ? "🔍"
+          : state.kind === "error"
+            ? "⚠️"
+            : state.status === "warning"
+              ? "⚠️"
+              : state.status === "clear"
+                ? "✓"
+                : "ℹ️"}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 10.5,
+            fontWeight: 700,
+            letterSpacing: 1.4,
+            textTransform: "uppercase",
+            color: palette.label,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          Evidence check
+          {state.kind === "checking" && (
+            <span
+              style={{
+                fontSize: 10.5,
+                color: C.hint,
+                fontWeight: 500,
+                letterSpacing: 0,
+                textTransform: "none",
+              }}
+            >
+              · cross-referencing 2024–2025 literature…
+            </span>
+          )}
+          {state.kind === "done" && (
+            <span
+              style={{
+                fontSize: 10.5,
+                color: C.hint,
+                fontWeight: 500,
+                letterSpacing: 0,
+                textTransform: "none",
+                fontFamily: FONT_MONO,
+              }}
+            >
+              · {state.cached ? "cached" : `${(state.latencyMs / 1000).toFixed(1)}s`}
+            </span>
+          )}
+        </div>
+        <div
+          style={{
+            fontSize: 13,
+            color: C.text,
+            marginTop: 6,
+            lineHeight: 1.5,
+          }}
+        >
+          {state.kind === "checking"
+            ? "Querying Tavily for recent recalls and new contraindications…"
+            : state.kind === "error"
+              ? `Check unavailable: ${state.message}`
+              : state.summary}
+        </div>
+        {state.kind === "done" && state.citations.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              fontSize: 11,
+            }}
+          >
+            {state.citations.slice(0, 3).map((c, i) => (
+              <a
+                key={`${c.url}-${i}`}
+                href={c.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  color: palette.label,
+                  textDecoration: "underline",
+                  textUnderlineOffset: 2,
+                  maxWidth: 320,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={c.title}
+              >
+                {c.title}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FieldHeader({
   label,
   hint,
@@ -2046,6 +2249,10 @@ function ConsultContent() {
               <TodoCard
                 todos={output.todos}
                 onApprove={() => flashToast("Staff to-dos dispatched")}
+              />
+              <EvidenceCheckCard
+                patient={patient}
+                output={output}
               />
             </div>
           )}
