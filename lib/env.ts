@@ -33,7 +33,7 @@ export const ENV = {
     phone:
       read("NEXT_PUBLIC_CLINIC_PHONE") ||
       read("CLINIC_PHONE") ||
-      "+60 12 345 6789",
+      "+60 13 928 4717",
   },
 
   anthropic: {

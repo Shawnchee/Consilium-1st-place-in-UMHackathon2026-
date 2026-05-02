@@ -17,7 +17,7 @@ export const PATIENTS: Patient[] = [
     age: "8yo",
     sex: "Male (neutered)",
     owner: "Aisyah Rahman",
-    ownerPhone: "+60 12 345 6789",
+    ownerPhone: "+60 13 928 4717",
     tag: "Pre-op",
     tagColor: "red",
     reason: "Pre-cystotomy workup — bladder stones",

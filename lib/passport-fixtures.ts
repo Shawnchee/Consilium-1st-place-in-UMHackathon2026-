@@ -88,7 +88,7 @@ export const MILO_DEMO_PAYLOAD: PassportPayload = {
     age: "8yo",
     sex: "Male (neutered)",
     owner: "Aisyah Rahman",
-    ownerPhone: "+60 12 345 6789",
+    ownerPhone: "+60 13 928 4717",
     microchipId: "985112007419283",
   },
   vaccinations: MILO_VACCINATIONS,

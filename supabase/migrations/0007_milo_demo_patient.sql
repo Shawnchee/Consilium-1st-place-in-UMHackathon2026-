@@ -19,7 +19,7 @@ insert into patients (
 ) values (
   '11111111-1111-1111-1111-000000000001',
   'Milo', 'Dog', 'Miniature Schnauzer', 8, 'Male (neutered)',
-  'Aisyah Rahman', '+60 12 345 6789', null,
+  'Aisyah Rahman', '+60 13 928 4717', null,
   '2024-01-01 00:00:00+00'
 )
 on conflict (id) do update set
@@ -47,7 +47,7 @@ insert into passports (patient_id, share_uuid, payload) values (
       'age', '8yo',
       'sex', 'Male (neutered)',
       'owner', 'Aisyah Rahman',
-      'ownerPhone', '+60 12 345 6789',
+      'ownerPhone', '+60 13 928 4717',
       'microchipId', '985112007419283'
     ),
     'vaccinations', jsonb_build_array(
