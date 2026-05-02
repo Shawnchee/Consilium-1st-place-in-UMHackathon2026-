@@ -12,6 +12,8 @@ import {
 import { api } from "@/lib/api";
 import { hasSupabase } from "@/lib/env";
 import { getSupabaseBrowser } from "@/lib/supabase";
+import { buildPayloadFromConsult } from "@/lib/passport-fixtures";
+import type { SessionCaptureResult } from "@/lib/agents/sub-agents/types";
 import type { FollowUp, MetricCardData, Patient } from "@/lib/types";
 
 interface StoreCtx {
@@ -36,6 +38,19 @@ interface StoreCtx {
   flashToast: (msg: string) => void;
   expandedPatient: string | null;
   setExpandedPatient: (id: string | null) => void;
+
+  /**
+   * Build a passport from the orchestrator output, persist it, and ping
+   * the owner on Telegram with the public passport URL appended to the
+   * draft body. Returns the absolute passport URL on success so the
+   * caller can render a copyable link.
+   */
+  closeConsultAndGeneratePassport: (
+    patientId: string,
+    result: SessionCaptureResult,
+    chatId: string,
+    options?: { bodyDraft?: string; aftercare?: string[] },
+  ) => Promise<{ passportUrl: string; messageId: number }>;
 }
 
 /** Minimum shape we read off a Realtime `followups` row payload. */
@@ -202,6 +217,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [escalation, approving, flashToast]);
 
+  const closeConsultAndGeneratePassport = useCallback(
+    async (
+      patientId: string,
+      result: SessionCaptureResult,
+      chatId: string,
+      options?: { bodyDraft?: string; aftercare?: string[] },
+    ): Promise<{ passportUrl: string; messageId: number }> => {
+      const patient = patients.find((p) => p.id === patientId);
+      if (!patient) throw new Error(`patient ${patientId} not loaded`);
+      if (!chatId.trim()) throw new Error("Telegram chat ID required");
+
+      // Carry forward existing vaccinations / microchip / share UUID if a
+      // prior passport already exists, so close-case doesn't wipe them.
+      let prior = null;
+      try {
+        const r = await api.getPassport(patientId);
+        prior = r.payload;
+      } catch {
+        prior = null;
+      }
+
+      const payload = buildPayloadFromConsult(patient, result, prior);
+      const upsert = await api.upsertPassport({ patientId, payload });
+
+      const origin =
+        typeof window !== "undefined" ? window.location.origin : "";
+      const absoluteUrl = `${origin}${upsert.url}`;
+
+      const baseBody = (options?.bodyDraft ?? result.summary.ownerMessage.body)
+        .replace(/\{clinic\}/g, "")
+        .trim();
+      const body = `${baseBody}\n\nPet passport: ${absoluteUrl}`;
+
+      const aftercare =
+        options?.aftercare ?? result.summary.ownerMessage.aftercare;
+
+      const sendRes = await api.telegramSend({
+        chatId: chatId.trim(),
+        body,
+        aftercare,
+        patientId,
+        visitId: result.visitId,
+      });
+
+      flashToast(`Case closed · passport sent to ${patient.owner}`);
+      return { passportUrl: absoluteUrl, messageId: sendRes.messageId };
+    },
+    [patients, flashToast],
+  );
+
   return (
     <Ctx.Provider
       value={{
@@ -223,6 +288,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         flashToast,
         expandedPatient,
         setExpandedPatient,
+        closeConsultAndGeneratePassport,
       }}
     >
       {children}
