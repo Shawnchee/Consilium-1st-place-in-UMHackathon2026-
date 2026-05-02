@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/agent/(.*)",
+      "destination": "/api/index.py"
+    }
+  ]
+}
