@@ -95,6 +95,67 @@ export function ArchitectureDiagram({
         <DiagramNode label="Doctor SOAP card" sub="dashboard view" tone="neutral" width="100%" />
         <DiagramNode label="Owner Telegram" sub="aftercare + tone-tuned" tone="neutral" width="100%" />
       </div>
+
+      <ConnectorRow dashed />
+
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <EvidenceCheckNode compact={compact} />
+      </div>
+    </div>
+  );
+}
+
+function EvidenceCheckNode({ compact }: { compact?: boolean }) {
+  return (
+    <div
+      style={{
+        width: compact ? 260 : 360,
+        background: C.amberLight,
+        borderTop: `1px dashed ${C.amberBorder}`,
+        borderRight: `1px dashed ${C.amberBorder}`,
+        borderBottom: `1px dashed ${C.amberBorder}`,
+        borderLeft: `3px dashed ${C.amber}`,
+        borderRadius: 10,
+        padding: compact ? "10px 12px" : "12px 14px",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: compact ? 12.5 : 13,
+            fontWeight: 600,
+            color: C.text,
+            letterSpacing: -0.1,
+          }}
+        >
+          Evidence Check
+        </span>
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: 1,
+            color: C.amber,
+            background: "#FFFFFF",
+            border: `1px solid ${C.amberBorder}`,
+            borderRadius: 4,
+            padding: "1px 4px",
+          }}
+        >
+          TAVILY
+        </span>
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+        off critical path · recent recalls + new contraindications
+      </div>
     </div>
   );
 }
@@ -161,23 +222,6 @@ function SubAgentCard({
         >
           {agent.label}
         </span>
-        {agent.tavily && (
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 9,
-              fontWeight: 700,
-              letterSpacing: 1,
-              color: C.amber,
-              background: C.amberLight,
-              border: `1px solid ${C.amberBorder}`,
-              borderRadius: 4,
-              padding: "1px 4px",
-            }}
-          >
-            TAVILY
-          </span>
-        )}
       </div>
       {!compact && (
         <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.45 }}>{agent.hint}</div>
@@ -250,8 +294,17 @@ function DiagramNode({
   );
 }
 
-function ConnectorRow({ merging, splitting }: { merging?: boolean; splitting?: boolean }) {
-  const stroke = C.border;
+function ConnectorRow({
+  merging,
+  splitting,
+  dashed,
+}: {
+  merging?: boolean;
+  splitting?: boolean;
+  dashed?: boolean;
+}) {
+  const stroke = dashed ? C.amberBorder : C.border;
+  const dashArray = dashed ? "4 4" : undefined;
   return (
     <svg
       viewBox="0 0 600 28"
@@ -260,17 +313,19 @@ function ConnectorRow({ merging, splitting }: { merging?: boolean; splitting?: b
     >
       {merging ? (
         <>
-          <line x1="60" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" />
-          <line x1="180" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" />
-          <line x1="300" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" />
-          <line x1="420" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" />
-          <line x1="540" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" />
+          <line x1="60" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
+          <line x1="180" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
+          <line x1="300" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
+          <line x1="420" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
+          <line x1="540" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
         </>
       ) : splitting ? (
         <>
-          <line x1="300" y1="0" x2="180" y2="28" stroke={stroke} strokeWidth="1" />
-          <line x1="300" y1="0" x2="420" y2="28" stroke={stroke} strokeWidth="1" />
+          <line x1="300" y1="0" x2="180" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
+          <line x1="300" y1="0" x2="420" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
         </>
+      ) : dashed ? (
+        <line x1="300" y1="0" x2="300" y2="28" stroke={stroke} strokeWidth="1" strokeDasharray={dashArray} />
       ) : (
         <>
           <line x1="300" y1="0" x2="60" y2="28" stroke={stroke} strokeWidth="1" />

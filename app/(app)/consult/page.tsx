@@ -1464,7 +1464,7 @@ function PreconsultBriefCard({ patient }: { patient: Patient }) {
         </span>
         <span style={{ color: C.border }}>·</span>
         <span style={{ fontSize: 11.5, color: C.muted }}>
-          AI-generated from {patient.name}&apos;s pre-consult brief
+          Generated from {patient.name}&apos;s pre-consult brief
         </span>
         <div style={{ flex: 1 }} />
         {state.kind === "loading" && (
@@ -1815,10 +1815,10 @@ function ConsultContent() {
   const output: ConsultOutput | null = useMemo(() => {
     if (!stream.result) return null;
     return {
-      soap: stream.result.summary.doctorSummary.soap,
-      prescription: stream.result.summary.prescription,
-      billing: stream.result.summary.billing,
-      todos: stream.result.summary.todos,
+      soap: stream.result.summary.doctorSummary?.soap ?? { S: "", O: "", A: "", P: "" },
+      prescription: stream.result.summary.prescription ?? [],
+      billing: stream.result.summary.billing ?? [],
+      todos: stream.result.summary.todos ?? [],
     };
   }, [stream.result]);
   const generating = stream.running;
